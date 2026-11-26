@@ -1,6 +1,7 @@
 package com.kdt.crawler;
 
 import com.kdt.crawler.model.ProductInfo;
+import com.kdt.crawler.service.DatabaseService;
 import com.kdt.crawler.service.GoogleTrendsService;
 import com.kdt.crawler.service.SsadaguCrawlerService;
 import com.kdt.crawler.util.FileUtils;
@@ -62,12 +63,16 @@ public class SsadaguCrawler {
                 // 4단계: 결과 출력 및 검증
                 System.out.println("\n📋 4단계: 수집된 정보 검증 및 출력");
                 validateAndDisplayResults(productInfo);
-                
-                // 5단계: 파일로 저장
-                System.out.println("\n💾 5단계: 결과 파일 저장 중...");
-                FileUtils.saveProductInfo(productInfo);
-                FileUtils.saveLog("크롤링 완료 - " + productInfo.getProductName());
-                
+
+
+                // txt파일 저장 -> DB 저장 변경
+
+                // 5단계: 데이터베이스에 저장
+                System.out.println("\n💾 5단계: 결과 DB 저장 중...");
+                DatabaseService dbService = new DatabaseService();
+                dbService.saveProductInfo(productInfo); // FileUtils 대신 DatabaseService를 사용
+                FileUtils.saveLog("크롤링 완료 및 DB 저장 - " + productInfo.getProductName()); // 로그는 그대로 파일에 저장
+                //
                 System.out.println("\n🎉 === 크롤링 작업이 완료되었습니다! ===");
                 System.out.println("📁 결과 파일이 data/ 폴더에 저장되었습니다.");
                 System.out.println("🔍 키워드: " + selectedKeyword);
