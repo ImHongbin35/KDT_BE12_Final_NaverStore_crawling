@@ -2,6 +2,7 @@ package com.kdt.crawler;
 
 import com.kdt.crawler.model.ProductInfo;
 import com.kdt.crawler.service.DatabaseService;
+import com.kdt.crawler.service.KeywordService;
 import com.kdt.crawler.service.GoogleTrendsService;
 import com.kdt.crawler.service.SsadaguCrawlerService;
 import com.kdt.crawler.util.FileUtils;
@@ -33,6 +34,8 @@ public class SsadaguCrawler {
             // 서비스 클래스 인스턴스 생성
             GoogleTrendsService trendsService = new GoogleTrendsService();
             SsadaguCrawlerService crawlerService = new SsadaguCrawlerService();
+            DatabaseService dbService = new DatabaseService();
+            KeywordService keywordService = new KeywordService();
             
             try {
                 // 1단계: 구글 트렌드에서 키워드 가져오기
@@ -49,10 +52,14 @@ public class SsadaguCrawler {
                     FileUtils.saveLog("트렌드 키워드 " + trendingKeywords.size() + "개 수집 완료");
                 }
                 
-                // 2단계: 자동으로 첫 번째 키워드 선택
-                System.out.println("\n🎯 2단계: 자동으로 키워드 선택");
-                String selectedKeyword = trendsService.selectFirstKeyword(trendingKeywords);
+                // 2단계: 30일 중복 방지 로직을 적용한 키워드 선택 (트렌드성 반영)
+                System.out.println("\n🎯 2단계: 트렌드성을 반영한 키워드 선택 (최근 30일간 중복 방지)");
+                String selectedKeyword = trendsService.selectKeywordWithDuplicateCheck(trendingKeywords, keywordService);
                 FileUtils.saveLog("선택된 키워드: " + selectedKeyword);
+                
+                // 선택된 키워드를 used_keywords 테이블에 저장
+                System.out.println("💾 선택된 키워드를 데이터베이스에 저장 중...");
+                keywordService.saveUsedKeyword(selectedKeyword);
                 
                 // 3단계: 싸다구몰에서 상품 정보 크롤링
                 System.out.println("\n🛒 3단계: 싸다구몰에서 '" + selectedKeyword + "' 상품 정보 수집 중...");
@@ -69,12 +76,11 @@ public class SsadaguCrawler {
 
                 // 5단계: 데이터베이스에 저장
                 System.out.println("\n💾 5단계: 결과 DB 저장 중...");
-                DatabaseService dbService = new DatabaseService();
-                dbService.saveProductInfo(productInfo); // FileUtils 대신 DatabaseService를 사용
+                dbService.saveProductInfo(productInfo); // 상품 정보를 product 테이블에 저장
                 FileUtils.saveLog("크롤링 완료 및 DB 저장 - " + productInfo.getProductName()); // 로그는 그대로 파일에 저장
                 //
                 System.out.println("\n🎉 === 크롤링 작업이 완료되었습니다! ===");
-                System.out.println("📁 결과 파일이 data/ 폴더에 저장되었습니다.");
+                System.out.println("💾 키워드 및 상품 정보가 데이터베이스에 저장되었습니다.");
                 System.out.println("🔍 키워드: " + selectedKeyword);
                 System.out.println("📦 상품명: " + productInfo.getProductName());
                 System.out.println("💰 가격: " + productInfo.getPrice());
@@ -84,13 +90,21 @@ public class SsadaguCrawler {
                 FileUtils.saveLog("크롤링 오류: " + e.getMessage());
                 e.printStackTrace();
                 
-                // 오류 발생 시에도 기본 정보 저장
+                // 오류 발생 시에도 기본 정보를 데이터베이스에 저장
                 ProductInfo errorInfo = new ProductInfo();
                 errorInfo.setKeyword("오류 발생");
                 errorInfo.setProductName("크롤링 실패");
                 errorInfo.setPrice("정보 없음");
                 errorInfo.setCrawledAt(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-                FileUtils.saveProductInfo(errorInfo);
+                
+                try {
+                    dbService.saveProductInfo(errorInfo);
+                    keywordService.saveUsedKeyword("오류 발생");
+                } catch (Exception dbException) {
+                    System.err.println("❌ 오류 정보 데이터베이스 저장 실패: " + dbException.getMessage());
+                    // 데이터베이스 저장이 실패하면 파일로 저장
+                    FileUtils.saveProductInfo(errorInfo);
+                }
                 
             } finally {
                 // 브라우저 정리

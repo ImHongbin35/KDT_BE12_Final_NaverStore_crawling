@@ -11,7 +11,90 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+
 public class SsadaguCrawlerService {
+
+    private String downloadAndSaveImage(String imageUrl) {
+        return downloadAndSaveImage(imageUrl, 0);
+    }
+    
+    private String downloadAndSaveImage(String imageUrl, int imageIndex) {
+        try {
+            // --- 1. 날짜 기반 폴더 경로 생성 ---
+            LocalDate today = LocalDate.now();
+            String year = today.format(DateTimeFormatter.ofPattern("yyyy"));
+            String month = today.format(DateTimeFormatter.ofPattern("MM"));
+            String day = today.format(DateTimeFormatter.ofPattern("dd"));
+
+            String baseDirectory = "data/product_images/"; // 프로젝트 내부 저장 폴더
+            Path dateBasedDirectory = Paths.get(baseDirectory, year, month, day);
+
+            // 해당 폴더가 존재하지 않으면 생성
+            Files.createDirectories(dateBasedDirectory);
+
+            // --- 2. 고유한 파일명 생성 (UUID + 이미지 순서 + 확장자) ---
+            String extension = "";
+            int lastIndexOfDot = imageUrl.lastIndexOf(".");
+            if (lastIndexOfDot > 0) {
+                extension = imageUrl.substring(lastIndexOfDot);
+            }
+            String uniqueFileName = UUID.randomUUID().toString() + "_img" + imageIndex + extension;
+
+            // --- 3. 최종 저장 경로 및 다운로드 ---
+            Path destinationPath = dateBasedDirectory.resolve(uniqueFileName);
+
+            URL url = new URL(imageUrl);
+            try (InputStream in = url.openStream()) {
+                Files.copy(in, destinationPath, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("✅ 이미지 " + (imageIndex + 1) + " 저장 성공: " + destinationPath);
+
+                // 4. DB에 저장할 상대 경로 반환
+                String relativePath = Paths.get("data/product_images/", year, month, day, uniqueFileName).toString().replace("\\", "/");
+                return relativePath;
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ 이미지 " + (imageIndex + 1) + " 다운로드 실패: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    private List<String> downloadAndSaveMultipleImages(List<String> imageUrls) {
+        List<String> savedPaths = new ArrayList<>();
+        
+        System.out.println("🖼️ " + imageUrls.size() + "개의 상품 이미지 다운로드 시작...");
+        
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String imageUrl = imageUrls.get(i);
+            String savedPath = downloadAndSaveImage(imageUrl, i);
+            
+            if (savedPath != null) {
+                savedPaths.add(savedPath);
+            }
+            
+            // 다운로드 간격 조정 (서버 부하 방지)
+            try {
+                Thread.sleep(500); // 0.5초 대기
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        
+        System.out.println("✅ " + savedPaths.size() + "개 이미지 저장 완료");
+        return savedPaths;
+    }
 
     public ProductInfo crawlProductInfo(Page page, String keyword) {
         ProductInfo productInfo = new ProductInfo();
@@ -400,17 +483,53 @@ public class SsadaguCrawlerService {
             setDefaultProductInfo(productInfo, page.url());
         }
     }
-    
+
     private void extractFromDetailPage(Page page, ProductInfo productInfo) {
         System.out.println("🔍 상품 상세 페이지에서 정보 추출 중...");
-        
+
         try {
+            // 1. HTML을 파싱하여 'doc' 객체를 생성
             String htmlContent = page.content();
             Document doc = Jsoup.parse(htmlContent);
-            
-            // 상세 페이지에서 정보 추출
+
+            // 2. 상세 정보를 추출 (기본 상품 정보)
             extractDetailedProductInfo(doc, productInfo);
-            
+
+            // 3. 상품 상세 이미지들을 모두 추출
+            List<String> productImageUrls = extractProductDetailImages(doc);
+
+            if (!productImageUrls.isEmpty()) {
+                // 첫 번째 이미지를 메인 이미지로 설정
+                productInfo.setImageUrl(productImageUrls.get(0));
+                System.out.println("🖼️ 메인 이미지 URL: " + productImageUrls.get(0));
+
+                // 모든 상품 이미지를 다운로드하고 저장
+                List<String> savedImagePaths = downloadAndSaveMultipleImages(productImageUrls);
+
+                if (!savedImagePaths.isEmpty()) {
+                    // 첫 번째 저장된 이미지 경로를 localImagePath에 설정
+                    productInfo.setLocalImagePath(savedImagePaths.get(0));
+                    System.out.println("💾 메인 저장 경로: " + savedImagePaths.get(0));
+                    
+                    // 추가 이미지 경로들을 설명에 포함 (선택사항)
+                    if (savedImagePaths.size() > 1) {
+                        StringBuilder additionalImages = new StringBuilder();
+                        for (int i = 1; i < savedImagePaths.size(); i++) {
+                            additionalImages.append("추가이미지").append(i).append(": ").append(savedImagePaths.get(i)).append("\n");
+                        }
+                        
+                        String existingDesc = productInfo.getDescription();
+                        if (existingDesc != null && !existingDesc.isEmpty()) {
+                            productInfo.setDescription(existingDesc + "\n\n=== 추가 상품 이미지 ===\n" + additionalImages.toString());
+                        } else {
+                            productInfo.setDescription("=== 추가 상품 이미지 ===\n" + additionalImages.toString());
+                        }
+                    }
+                }
+            } else {
+                System.out.println("⚠️ 상품 상세 이미지를 찾을 수 없습니다.");
+            }
+
         } catch (Exception e) {
             System.err.println("❌ 상세 페이지 정보 추출 중 오류: " + e.getMessage());
             e.printStackTrace();
@@ -848,6 +967,86 @@ public class SsadaguCrawlerService {
             }
         }
         return "이미지 없음";
+    }
+    
+    private List<String> extractProductDetailImages(Document doc) {
+        List<String> imageUrls = new ArrayList<>();
+        
+        try {
+            // 상품 상세 이미지 선택자들 (우선순위 순)
+            String[] detailImageSelectors = {
+                "img[id^='img_translate_']",  // 주요 패턴: img_translate_0, img_translate_1, ...
+                "img[src*='alicdn.com'][style*='display: block']", // alicdn.com + display:block 스타일
+                "img[src*='alicdn.com'][style*='width: 100%']",     // alicdn.com + width:100% 스타일
+                ".product-detail img[src*='alicdn.com']",          // 상품 상세 영역 내 이미지
+                ".detail-content img[src*='alicdn.com']",          // 상세 내용 영역 내 이미지
+                "img[src*='alicdn.com']"                           // 모든 alicdn.com 이미지
+            };
+            
+            System.out.println("🔍 상품 상세 이미지 추출 시작...");
+            
+            for (String selector : detailImageSelectors) {
+                Elements imageElements = doc.select(selector);
+                
+                if (imageElements.size() > 0) {
+                    System.out.println("📋 선택자 '" + selector + "'로 " + imageElements.size() + "개 이미지 발견");
+                    
+                    for (Element imgElement : imageElements) {
+                        String src = imgElement.attr("src");
+                        if (src != null && !src.isEmpty()) {
+                            // 이미지 URL 정규화
+                            String normalizedUrl = normalizeImageUrl(src);
+                            
+                            // 중복 제거 및 유효성 검사
+                            if (!imageUrls.contains(normalizedUrl) && isValidProductImage(normalizedUrl)) {
+                                imageUrls.add(normalizedUrl);
+                                System.out.println("✅ 이미지 " + imageUrls.size() + ": " + normalizedUrl);
+                            }
+                        }
+                    }
+                    
+                    // 이미지를 찾았으면 다른 선택자는 시도하지 않음
+                    if (imageUrls.size() > 0) {
+                        break;
+                    }
+                }
+            }
+            
+            System.out.println("📊 총 " + imageUrls.size() + "개의 상품 상세 이미지 추출 완료");
+            
+        } catch (Exception e) {
+            System.err.println("❌ 상품 상세 이미지 추출 중 오류: " + e.getMessage());
+        }
+        
+        return imageUrls;
+    }
+    
+    private String normalizeImageUrl(String imageUrl) {
+        if (imageUrl.startsWith("http")) {
+            return imageUrl;
+        } else if (imageUrl.startsWith("/")) {
+            return "https://ssadagu.kr" + imageUrl;
+        } else {
+            return "https://ssadagu.kr/" + imageUrl;
+        }
+    }
+    
+    private boolean isValidProductImage(String imageUrl) {
+        // 유효하지 않은 이미지 URL 패턴 필터링
+        String[] invalidPatterns = {
+            "icon", "logo", "banner", "advertisement", "ad_", "btn_", "button"
+        };
+        
+        String lowerUrl = imageUrl.toLowerCase();
+        for (String pattern : invalidPatterns) {
+            if (lowerUrl.contains(pattern)) {
+                return false;
+            }
+        }
+        
+        // 상품 이미지로 간주할 수 있는 패턴
+        return lowerUrl.contains("alicdn.com") && 
+               (lowerUrl.contains(".jpg") || lowerUrl.contains(".jpeg") || lowerUrl.contains(".png"));
     }
     
     private String extractProductSpecs(Document doc) {

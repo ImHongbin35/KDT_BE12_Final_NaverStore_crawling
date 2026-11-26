@@ -15,12 +15,25 @@ public class DatabaseService {
     // -----------------------------------------
 
     public void saveProductInfo(ProductInfo productInfo) {
-        String sql = "INSERT INTO product (keyword, productName, price, originalPrice, discountRate, " +
-                "description, seller, rating, reviewCount, deliveryInfo, productUrl, imageUrl, crawledAt) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        if (productInfo == null) {
+            System.err.println("❌ ProductInfo가 null입니다.");
+            return;
+        }
+        
+        System.out.println("🔍 ProductInfo 저장 시도:");
+        System.out.println("   키워드: " + productInfo.getKeyword());
+        System.out.println("   상품명: " + productInfo.getProductName());
+        System.out.println("   가격: " + productInfo.getPrice());
+        System.out.println("   수집시간: " + productInfo.getCrawledAt());
+        
+        String sql = "INSERT INTO product (keyword, product_name, price, original_price, discount_rate, " +
+                "description, seller, rating, review_count, delivery_info, product_url, image_url, local_image_path, crawled_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            System.out.println("🔗 데이터베이스 연결 성공");
 
             pstmt.setString(1, productInfo.getKeyword());
             pstmt.setString(2, productInfo.getProductName());
@@ -34,18 +47,23 @@ public class DatabaseService {
             pstmt.setString(10, productInfo.getDeliveryInfo());
             pstmt.setString(11, productInfo.getProductUrl());
             pstmt.setString(12, productInfo.getImageUrl());
-            pstmt.setString(13, productInfo.getCrawledAt());
+            pstmt.setString(13, productInfo.getLocalImagePath());
+            pstmt.setString(14, productInfo.getCrawledAt());
 
+            System.out.println("📝 SQL 실행 중...");
             int affectedRows = pstmt.executeUpdate();
+            System.out.println("📊 영향받은 행 수: " + affectedRows);
 
             if (affectedRows > 0) {
                 System.out.println("✅ 데이터베이스에 상품 정보가 성공적으로 저장되었습니다.");
             } else {
-                System.err.println("❌ 데이터베이스 저장에 실패했습니다.");
+                System.err.println("❌ 데이터베이스 저장에 실패했습니다. (영향받은 행 없음)");
             }
 
         } catch (SQLException e) {
             System.err.println("❌ 데이터베이스 오류: " + e.getMessage());
+            System.err.println("❌ SQL State: " + e.getSQLState());
+            System.err.println("❌ Error Code: " + e.getErrorCode());
             e.printStackTrace();
         }
     }

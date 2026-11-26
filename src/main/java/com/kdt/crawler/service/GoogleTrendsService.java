@@ -209,7 +209,37 @@ public class GoogleTrendsService {
         return false;
     }
     
-    // 자동으로 첫 번째 키워드 선택 (사용자 입력 없음)
+    // 30일 중복 방지 로직을 적용한 키워드 선택 (트렌드성 반영)
+    public String selectKeywordWithDuplicateCheck(List<String> keywords, com.kdt.crawler.service.KeywordService keywordService) {
+        if (keywords.isEmpty()) {
+            System.out.println("⚠️ 키워드 리스트가 비어있습니다. 기본 키워드를 사용합니다.");
+            return "에어컨"; // 기본값
+        }
+        
+        System.out.println("\n=== 발견된 구글 트렌드 키워드 ===");
+        for (int i = 0; i < Math.min(keywords.size(), 10); i++) {
+            System.out.println((i + 1) + ". " + keywords.get(i));
+        }
+        
+        System.out.println("\n🔍 최근 30일간 중복되지 않은 키워드를 순서대로 검색 중...");
+        
+        // 인기순으로 하나씩 30일 중복 체크
+        for (String keyword : keywords) {
+            boolean isUsedRecently = keywordService.isKeywordUsedRecently(keyword);
+            
+            if (!isUsedRecently) {
+                System.out.println("✅ 선택된 키워드: " + keyword + " (최근 30일 내 중복 없음)");
+                return keyword;
+            } else {
+                System.out.println("❌ 키워드 '" + keyword + "'는 최근 30일 내 사용됨 - 다음 키워드 확인");
+            }
+        }
+        
+        System.out.println("⚠️ 모든 키워드가 최근 30일 내에 사용되었습니다. 첫 번째 키워드를 사용합니다.");
+        return keywords.get(0);
+    }
+    
+    // 기존 기능 유지 (호환성을 위해)
     public String selectFirstKeyword(List<String> keywords) {
         if (keywords.isEmpty()) {
             return "에어컨"; // 기본값

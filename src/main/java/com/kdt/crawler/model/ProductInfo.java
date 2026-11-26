@@ -13,6 +13,7 @@ public class ProductInfo {
     private String deliveryInfo;
     private String productUrl;
     private String imageUrl;
+    private String localImagePath; // <-- 새 필드 추가
     private String crawledAt;
 
     public ProductInfo() {}
@@ -54,6 +55,10 @@ public class ProductInfo {
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
 
+    // --- 아래 Getter/Setter 추가 ---
+    public String getLocalImagePath() { return localImagePath; }
+    public void setLocalImagePath(String localImagePath) { this.localImagePath = localImagePath; }
+
     public String getCrawledAt() { return crawledAt; }
     public void setCrawledAt(String crawledAt) { this.crawledAt = crawledAt; }
 
@@ -73,6 +78,7 @@ public class ProductInfo {
         sb.append("배송정보: ").append(deliveryInfo).append("\n");
         sb.append("상품URL: ").append(productUrl).append("\n");
         sb.append("이미지URL: ").append(imageUrl).append("\n");
+        sb.append("저장된 이미지 경로: ").append(localImagePath).append("\n"); // <-- 내용 추가
         sb.append("수집일시: ").append(crawledAt).append("\n");
         sb.append("==================\n");
         return sb.toString();
