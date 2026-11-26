@@ -8,6 +8,7 @@ public class ProductInfo {
     private String description;
     private String rating;
     private String productUrl;
+    private String crawlType;
     private String createdAt;
 
     public ProductInfo() {}
@@ -34,6 +35,8 @@ public class ProductInfo {
     public String getProductUrl() { return productUrl; }
     public void setProductUrl(String productUrl) { this.productUrl = productUrl; }
 
+    public String getCrawlType() { return crawlType; }
+    public void setCrawlType(String crawlType) { this.crawlType = crawlType; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
@@ -53,6 +56,7 @@ public class ProductInfo {
         sb.append("상품설명: ").append(description).append("\n");
         sb.append("평점: ").append(rating).append("\n");
         sb.append("상품URL: ").append(productUrl).append("\n");
+        sb.append("크롤링 타입: ").append(crawlType).append("\n");
         sb.append("수집일시: ").append(createdAt).append("\n");
         sb.append("==================\n");
         return sb.toString();

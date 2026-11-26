@@ -69,8 +69,8 @@ public class DatabaseService {
      */
     private int saveProduct(Connection conn, ProductInfo productInfo) throws SQLException {
         String sql = "INSERT INTO product (keyword, product_name, product_name_cn, price, description, " +
-                    "rating, product_url, image_url, local_image_path, ocr_text) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    "rating, product_url, image_url, local_image_path, crawl_type, ocr_text) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             
@@ -83,7 +83,8 @@ public class DatabaseService {
             pstmt.setString(7, productInfo.getProductUrl());
             pstmt.setString(8, null); // image_url - 이미지 처리 기능 제거로 null 설정
             pstmt.setString(9, null); // local_image_path - 이미지 처리 기능 제거로 null 설정
-            pstmt.setString(10, null); // ocr_text - OCR 기능 제거로 null 설정
+            pstmt.setString(10, productInfo.getCrawlType()); // crawl_type 필드 추가
+            pstmt.setString(11, null); // ocr_text - OCR 기능 제거로 null 설정
 
             int affectedRows = pstmt.executeUpdate();
             if (affectedRows == 0) {

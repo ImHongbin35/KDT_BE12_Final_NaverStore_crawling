@@ -18,6 +18,8 @@ public class SsadaguCrawlerService {
 
     public SsadaguCrawlerService() {
     }
+    
+
 
     public ProductInfo crawlProductInfo(Page page, String keyword) {
         ProductInfo productInfo = new ProductInfo();

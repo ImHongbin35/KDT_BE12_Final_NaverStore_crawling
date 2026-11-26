@@ -1,5 +1,6 @@
 package com.kdt.crawler;
 
+import com.kdt.crawler.model.CrawlJobType;
 import com.kdt.crawler.model.ProductInfo;
 import com.kdt.crawler.service.DatabaseService;
 import com.kdt.crawler.service.KeywordService;
@@ -13,7 +14,22 @@ import java.util.List;
 public class SsadaguCrawler {
 
     public static void main(String[] args) {
-        System.out.println("🚀 === 싸다구몰 자동 상품 정보 크롤러 시작 ===");
+        // 크롤링 타입 설정 (실행 인자 방식)
+        CrawlJobType crawlType = CrawlJobType.AUTOMATIC; // 기본값
+        
+        if (args.length > 0) {
+            try {
+                crawlType = CrawlJobType.valueOf(args[0].toUpperCase());
+                System.out.println("✅ 실행 인자로 크롤링 타입 설정: " + crawlType.name());
+            } catch (IllegalArgumentException e) {
+                System.err.println("⚠️ 경고: 유효하지 않은 타입 '" + args[0] + "'. 기본값 AUTOMATIC으로 실행합니다.");
+                System.err.println("💡 사용법: java -jar crawler.jar [AUTOMATIC|MANUAL]");
+            }
+        } else {
+            System.out.println("ℹ️ 실행 인자 없음. 기본값 AUTOMATIC으로 실행합니다.");
+        }
+        
+        System.out.println("🚀 === 싸다구몰 상품 정보 크롤러 시작 (" + crawlType.name() + ") ===");
         
         try (Playwright playwright = Playwright.create()) {
             // 브라우저 설정
@@ -129,6 +145,9 @@ public class SsadaguCrawler {
                 
                 ProductInfo productInfo = crawlerService.crawlProductInfo(page, selectedKeyword);
                 
+                // crawl_type 설정 (실행 인자로 받은 타입 사용)
+                productInfo.setCrawlType(crawlType.name());
+                
                 // 5단계: 결과 출력 및 검증
                 System.out.println("\n📋 5단계: 수집된 정보 검증 및 출력");
                 validateAndDisplayResults(productInfo);
@@ -157,6 +176,7 @@ public class SsadaguCrawler {
                 errorInfo.setKeyword("오류 발생");
                 errorInfo.setProductName("크롤링 실패");
                 errorInfo.setPrice("정보 없음");
+                errorInfo.setCrawlType(crawlType.name());
                 errorInfo.setCrawledAt(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
                 
                 try {
