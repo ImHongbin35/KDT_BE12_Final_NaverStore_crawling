@@ -3,7 +3,7 @@ package com.kdt.crawler;
 import com.kdt.crawler.model.ProductInfo;
 import com.kdt.crawler.service.DatabaseService;
 import com.kdt.crawler.service.KeywordService;
-import com.kdt.crawler.service.GoogleTrendsService;
+import com.kdt.crawler.service.NaverShoppingBestService;
 import com.kdt.crawler.service.SsadaguCrawlerService;
 import com.kdt.crawler.util.FileUtils;
 import com.microsoft.playwright.*;
@@ -32,29 +32,30 @@ public class SsadaguCrawler {
             Page page = context.newPage();
             
             // 서비스 클래스 인스턴스 생성
-            GoogleTrendsService trendsService = new GoogleTrendsService();
+            NaverShoppingBestService bestService = new NaverShoppingBestService();
             SsadaguCrawlerService crawlerService = new SsadaguCrawlerService();
             DatabaseService dbService = new DatabaseService();
             KeywordService keywordService = new KeywordService();
             
             try {
-                // 1단계: 구글 트렌드에서 키워드 가져오기
-                System.out.println("\n📊 1단계: 구글 트렌드에서 인기 키워드 수집 중...");
-                FileUtils.saveLog("구글 트렌드 크롤링 시작");
+                // 1단계: 네이버 쇼핑 베스트에서 키워드 가져오기
+                System.out.println("\n📊 1단계: 네이버 쇼핑 베스트에서 인기 키워드 수집 중...");
+                FileUtils.saveLog("네이버 쇼핑 베스트 크롤링 시작");
                 
-                List<String> trendingKeywords = trendsService.getTrendingKeywords(page, 10);
+                String bestKeyword = bestService.getBestKeyword(page, keywordService);
                 
-                if (trendingKeywords.isEmpty()) {
-                    System.out.println("⚠️ 트렌드 키워드를 가져오지 못했습니다. 기본 키워드를 사용합니다.");
-                    FileUtils.saveLog("트렌드 키워드 수집 실패 - 기본 키워드 사용");
+                if (bestKeyword == null || bestKeyword.isEmpty()) {
+                    System.out.println("⚠️ 베스트 키워드를 가져오지 못했습니다. 프로그램을 종료합니다.");
+                    FileUtils.saveLog("네이버 쇼핑 베스트 키워드 수집 실패 - 프로그램 종료");
+                    return;
                 } else {
-                    System.out.println("✅ " + trendingKeywords.size() + "개의 트렌드 키워드를 수집했습니다!");
-                    FileUtils.saveLog("트렌드 키워드 " + trendingKeywords.size() + "개 수집 완료");
+                    System.out.println("✅ 베스트 키워드를 수집했습니다: " + bestKeyword);
+                    FileUtils.saveLog("네이버 쇼핑 베스트 키워드 수집 완료: " + bestKeyword);
                 }
                 
-                // 2단계: 30일 중복 방지 로직을 적용한 키워드 선택 (트렌드성 반영)
-                System.out.println("\n🎯 2단계: 트렌드성을 반영한 키워드 선택 (최근 30일간 중복 방지)");
-                String selectedKeyword = trendsService.selectKeywordWithDuplicateCheck(trendingKeywords, keywordService);
+                // 2단계: 키워드 선택 완료 (중복 검사는 이미 getBestKeyword에서 완료)
+                System.out.println("\n🎯 2단계: 키워드 선택 완료");
+                String selectedKeyword = bestKeyword;
                 FileUtils.saveLog("선택된 키워드: " + selectedKeyword);
                 
                 // 선택된 키워드를 used_keywords 테이블에 저장

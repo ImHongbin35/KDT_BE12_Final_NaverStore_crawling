@@ -6,7 +6,7 @@
 **KDT_BE12_Final_Crawling_test** - 싸다구몰 자동 크롤링 프로젝트
 
 ### 프로젝트 목표
-구글 트렌드에서 실시간 인기 키워드를 자동 수집하고, 해당 키워드로 싸다구몰에서 첫 번째 상품을 찾아 상세 정보를 크롤링하는 완전 자동화 시스템 개발
+네이버 쇼핑 베스트에서 인기 키워드를 자동 수집하고, 해당 키워드로 싸다구몰에서 첫 번째 상품을 찾아 상세 정보를 크롤링하는 완전 자동화 시스템 개발
 
 ### 개발 기간
 2025년 8월
@@ -72,7 +72,9 @@ D:\D_AI_projects\KDT_BE12_Final_crowling_test\
 │   ├── model/                               # 데이터 모델
 │   │   └── ProductInfo.java                 # 상품 정보 데이터 클래스
 │   ├── service/                             # 비즈니스 로직 서비스
-│   │   ├── GoogleTrendsService.java         # 구글 트렌드 크롤링 서비스
+│   │   ├── NaverShoppingBestService.java    # 네이버 쇼핑 베스트 크롤링 서비스
+│   │   ├── KeywordService.java              # 키워드 중복 방지 서비스
+│   │   ├── DatabaseService.java             # 데이터베이스 연동 서비스
 │   │   └── SsadaguCrawlerService.java       # 싸다구몰 크롤링 서비스
 │   └── util/                                # 유틸리티 클래스
 │       └── FileUtils.java                   # 파일 처리 유틸리티
@@ -96,7 +98,9 @@ com.kdt.crawler
 ├── model
 │   └── ProductInfo                         # 데이터 모델
 ├── service
-│   ├── GoogleTrendsService                 # 트렌드 서비스
+│   ├── NaverShoppingBestService            # 네이버 쇼핑 베스트 서비스
+│   ├── KeywordService                      # 키워드 중복 방지 서비스
+│   ├── DatabaseService                     # 데이터베이스 연동 서비스
 │   └── SsadaguCrawlerService               # 크롤링 서비스
 └── util
     └── FileUtils                           # 파일 유틸리티
@@ -159,21 +163,44 @@ com.kdt.crawler
 
 **메서드 수**: 26개 (Getter/Setter 포함)
 
-### 4. GoogleTrendsService
+### 4. NaverShoppingBestService
 
-**역할**: 구글 트렌드 키워드 추출 및 검증
+**역할**: 네이버 쇼핑 베스트 키워드 추출 및 검증
 
 **주요 메서드**:
-- `getTrendingKeywords(Page, int)`: 트렌드 키워드 추출
-- `isValidTrendKeyword(String)`: 키워드 유효성 검증
-- `selectFirstKeyword(List<String>)`: 첫 번째 키워드 선택
+- `getBestKeyword(Page, KeywordService)`: 베스트 키워드 추출
+- `extractKeywordByRank(Page, int)`: 순위별 키워드 추출
+- `isValidKeyword(String)`: 키워드 유효성 검증
 
 **핵심 기능**:
-- `.mZ3RIc` 클래스 기반 정확한 키워드 추출
-- JavaScript/CSS 함수 패턴 필터링
-- 상품 관련 키워드만 선별적 허용
+- `[data-shp-contents-rank]` 속성 기반 정확한 키워드 추출
+- 30일 중복 방지 로직 연동
+- 1위~20위 순차 검색을 통한 최적 키워드 선정
 
-### 5. SsadaguCrawlerService
+### 5. KeywordService
+
+**역할**: 키워드 중복 방지 및 관리
+
+**주요 메서드**:
+- `isKeywordUsedRecently(String)`: 30일 내 사용 여부 확인
+- `saveUsedKeyword(String)`: 사용된 키워드 저장
+
+**핵심 기능**:
+- 30일 중복 방지 로직
+- 데이터베이스 연동을 통한 키워드 히스토리 관리
+
+### 6. DatabaseService
+
+**역할**: 데이터베이스 연동 및 데이터 저장
+
+**주요 메서드**:
+- `saveProductInfo(ProductInfo)`: 상품 정보 저장
+
+**핵심 기능**:
+- 크롤링 결과 데이터베이스 저장
+- 파일 저장 대신 체계적 데이터 관리
+
+### 7. SsadaguCrawlerService
 
 **역할**: 싸다구몰 상품 크롤링 핵심 로직
 
@@ -192,7 +219,7 @@ com.kdt.crawler
 - `.pro-info-boxs` 구조 기반 상세 스펙 파싱
 - 다층 방어 오류 처리 시스템
 
-### 6. FileUtils
+### 8. FileUtils
 
 **역할**: 파일 입출력 처리
 
@@ -209,10 +236,10 @@ com.kdt.crawler
 ```mermaid
 graph TD
     A[🚀 프로그램 시작] --> B[🔧 Playwright 초기화]
-    B --> C[🌐 구글 트렌드 접속]
-    C --> D[🔍 .mZ3RIc 키워드 추출]
-    D --> E[🎯 상품 키워드 필터링]
-    E --> F[🏆 첫 번째 키워드 선택]
+    B --> C[🌐 네이버 쇼핑 베스트 접속]
+    C --> D[🔍 순위별 키워드 추출]
+    D --> E[🎯 30일 중복 검사]
+    E --> F[🏆 유효한 키워드 선택]
     F --> G[🛒 싸다구몰 접속]
     G --> H[🔍 키워드 검색 실행]
     H --> I[👆 첫 번째 상품 클릭]
@@ -236,13 +263,13 @@ BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
     .setArgs(Collections.singletonList("--lang=ko-KR"));
 ```
 
-#### 2단계: 구글 트렌드 키워드 추출
+#### 2단계: 네이버 쇼핑 베스트 키워드 추출
 ```java
-// .mZ3RIc 클래스에서 키워드 추출
-Object result = page.evaluate("() => {" +
-    "const trendElements = document.querySelectorAll('.mZ3RIc');" +
-    "return Array.from(trendElements).map(el => el.textContent.trim());" +
-"}");
+// data-shp-contents-rank 속성에서 키워드 추출
+String rankSelector = "[data-shp-contents-rank=\"" + rank + "\"]";
+String keyword = extractKeywordByRank(page, rank);
+// 30일 중복 검사 수행
+boolean isUsedRecently = keywordService.isKeywordUsedRecently(keyword);
 ```
 
 #### 3단계: 키워드 검증 및 필터링
@@ -282,13 +309,19 @@ Elements proInfoItems = proInfoBoxs.select(".pro-info-item");
 
 ```
 SsadaguCrawler (Main)
-    ├── GoogleTrendsService      [1:1 사용]
-    ├── SsadaguCrawlerService    [1:1 사용]
-    ├── ProductInfo              [1:1 생성]
-    └── FileUtils               [정적 사용]
+    ├── NaverShoppingBestService [1:1 사용]
+    ├── KeywordService          [1:1 사용]
+    ├── DatabaseService         [1:1 사용]
+    ├── SsadaguCrawlerService   [1:1 사용]
+    ├── ProductInfo             [1:1 생성]
+    └── FileUtils              [정적 사용]
 
-GoogleTrendsService
-    └── List<String>            [키워드 리스트 반환]
+NaverShoppingBestService
+    ├── KeywordService          [중복 검사 의존]
+    └── String                  [단일 키워드 반환]
+
+KeywordService
+    └── DatabaseService         [데이터 저장 의존]
 
 SsadaguCrawlerService
     ├── ProductInfo             [1:1 수정]
@@ -306,7 +339,7 @@ FileUtils
 #### 1. SsadaguCrawler → Other Classes
 ```java
 // 서비스 클래스들과의 협력
-GoogleTrendsService trendsService = new GoogleTrendsService();
+NaverShoppingBestService bestService = new NaverShoppingBestService();
 SsadaguCrawlerService crawlerService = new SsadaguCrawlerService();
 ProductInfo productInfo = crawlerService.crawlProductInfo(page, keyword);
 FileUtils.saveProductInfo(productInfo);
@@ -321,7 +354,7 @@ public ProductInfo crawlProductInfo(Page page, String keyword)
 
 #### 3. Data Flow
 ```
-구글 트렌드 → List<String> → String (선택된 키워드)
+네이버 쇼핑 베스트 → String → String (선택된 키워드)
       ↓
 싸다구몰 크롤링 → ProductInfo → 파일 저장
 ```
@@ -332,9 +365,9 @@ public ProductInfo crawlProductInfo(Page page, String keyword)
 
 ### 1. 정밀한 웹 요소 타겟팅
 
-**구글 트렌드**:
+**네이버 쇼핑 베스트**:
 ```css
-.mZ3RIc    /* 트렌드 키워드 전용 컨테이너 */
+[data-shp-contents-rank]    /* 순위별 키워드 전용 속성 */
 ```
 
 **싸다구몰 상품**:
@@ -435,7 +468,7 @@ java -cp target/classes com.kdt.crawler.SsadaguCrawler
 ## 🎉 프로젝트 성과
 
 ### 목표 달성도
-- ✅ **구글 트렌드 정확 추출**: 100% 달성 (`.mZ3RIc` 클래스 기반)
+- ✅ **네이버 쇼핑 베스트 정확 추출**: 100% 달성 (`data-shp-contents-rank` 속성 기반)
 - ✅ **실제 상품 클릭**: 100% 달성 (`search_view.php` 완전 차단)
 - ✅ **완전한 정보 추출**: 100% 달성 (기본 정보 + 상세 스펙)
 - ✅ **완전 자동화**: 100% 달성 (사용자 개입 없음)
@@ -456,9 +489,9 @@ java -cp target/classes com.kdt.crawler.SsadaguCrawler
 
 ## 📝 결론
 
-본 프로젝트는 **구글 트렌드**와 **싸다구몰** 두 개의 서로 다른 웹사이트를 연계한 **완전 자동화 크롤링 시스템**으로, 단순한 데이터 수집을 넘어 **지능형 키워드 검증**, **정밀한 상품 타겟팅**, **완전한 정보 추출**을 구현한 **실무급 웹 크롤링 솔루션**입니다.
+본 프로젝트는 **네이버 쇼핑 베스트**와 **싸다구몰** 두 개의 서로 다른 웹사이트를 연계한 **완전 자동화 크롤링 시스템**으로, 단순한 데이터 수집을 넘어 **지능형 키워드 검증**, **30일 중복 방지**, **정밀한 상품 타겟팅**, **완전한 정보 추출**을 구현한 **실무급 웹 크롤링 솔루션**입니다.
 
-특히 **`.mZ3RIc` 클래스 기반 정확한 트렌드 키워드 추출**, **`platform=` & `num_iid=` 파라미터 검증을 통한 실제 상품 링크 클릭**, **`.pro-info-boxs` 구조 파싱을 통한 완전한 상품 스펙 추출** 등은 실제 웹사이트 구조를 정밀 분석하여 구현한 **고도의 기술적 성과**입니다.
+특히 **`data-shp-contents-rank` 속성 기반 정확한 순위별 키워드 추출**, **30일 중복 방지 로직을 통한 트렌드성 반영**, **`platform=` & `num_iid=` 파라미터 검증을 통한 실제 상품 링크 클릭**, **`.pro-info-boxs` 구조 파싱을 통한 완전한 상품 스펙 추출** 등은 실제 웹사이트 구조를 정밀 분석하여 구현한 **고도의 기술적 성과**입니다.
 
 본 프로젝트는 **웹 크롤링 학습**과 **실무 응용** 모두에 최적화된 **종합적인 자동화 솔루션**으로, 향후 유사한 크롤링 프로젝트의 **우수한 참고 모델**이 될 것입니다.
 
