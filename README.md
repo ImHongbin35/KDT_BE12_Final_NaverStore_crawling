@@ -1,4 +1,4 @@
-# 🚀 싸다구몰 자동 크롤링 프로젝트 - 최종 완성 버전
+# 🚀 싸다구몰 자동 크롤링 프로젝트
 
 ![Java](https://img.shields.io/badge/Java-11+-007396?style=flat-square&logo=java)
 ![Maven](https://img.shields.io/badge/Maven-3.6+-C71A36?style=flat-square&logo=apache-maven)
@@ -6,300 +6,106 @@
 
 ## 📋 프로젝트 개요
 
-네이버 쇼핑 베스트에서 **인기 키워드**를 자동으로 수집하고, 해당 키워드로 싸다구몰에서 **첫 번째 상품**을 찾아 **상세 정보를 크롤링**하는 완전 자동화 프로젝트입니다.
+**네이버 쇼핑 베스트 API**에서 실시간 인기 키워드(1~20위)를 수집하고, 그중 **중복 사용되지 않았으며 실제 상품과 연관성이 검증된 키워드**를 골라 싸다구몰에서 상품을 찾아 **상세 정보를 크롤링해 DB에 저장**하는 완전 자동화 프로젝트입니다.
 
 > **⚠️ 주의**: 이 프로젝트는 교육 목적으로 제작되었습니다. 상업적 사용 시 해당 사이트의 이용약관을 준수해주세요.
+
+이 저장소는 커밋 히스토리로 전체 개발 과정을 담고 있습니다: 구글 트렌드 기반 초기 버전 → 네이버 쇼핑 베스트로 전환 → 유사도 검증/번역 기능 추가 → API 기반 수집으로 고도화 → Oracle DB 전환(진행 중). 각 단계의 변경 내용은 [커밋 로그](https://github.com/ImHongbin35/KDT_BE12_Final_NaverStore_crawling/commits/main)에서 확인할 수 있습니다.
 
 ## 🎯 주요 기능
 
 ### ✅ 완전 자동화
-- 사용자 입력 없이 전체 프로세스 자동 실행
-- 네이버 쇼핑 베스트 크롤링 → 키워드 자동 선택 → 싸다구몰 검색 → 첫 번째 상품 클릭 → 상세 정보 수집
+네이버 쇼핑 베스트 키워드 수집 → 키워드 검증·선택 → 싸다구몰 검색 → 상품 클릭 → 상세 정보 수집 → DB 저장까지 사용자 개입 없이 전체 프로세스가 자동 실행됩니다.
 
-### 🔍 네이버 쇼핑 베스트 키워드 추출
-- **네이버 쇼핑 베스트** 크롤링 기반 실시간 인기 키워드 수집
-- **1위~20위 순위** 검색을 통한 최신 트렌드 키워드 제공
-- **30일 중복 방지 로직**: 트렌드성을 반영한 지능적 키워드 선정
+### 🔍 네이버 쇼핑 베스트 API 기반 키워드 수집
+- 페이지 스크래핑이 아닌 **HTTP + JSON API 호출**로 1~20위 베스트 키워드 목록을 조회
+- 1위부터 순서대로 아래 3단계 검증을 거쳐 **첫 번째로 통과한 키워드**를 선택
+  1. **기본 유효성 검증** (길이, 특수문자/HTML 태그, 네비게이션성 키워드 제외)
+  2. **30일 중복 검사**: 최근 30일 내 이미 사용한 키워드는 건너뜀 (트렌드성 반영)
+  3. **실제 상품 연관성 검증**: `SimilarityService`로 키워드와 검색된 상품명의 유사도를 검증, 실패 시 `PapagoTranslator`로 한/영 대체 키워드를 만들어 재시도
 
 ### 🛒 실제 상품 링크만 정확히 클릭
-- **`search_view.php` 완전 제외**: 검색 페이지가 아닌 실제 상품 상세 페이지만 타겟팅
-- **`platform=` & `num_iid=` 파라미터 검증**: 진짜 상품 링크만 클릭
-- **다단계 클릭 시도**: Playwright → JavaScript → 컨테이너 기반 순차 시도
+- `search_view.php` 완전 제외, `platform=` & `num_iid=` 파라미터 검증으로 실제 상품 상세 페이지만 타겟팅
+- Playwright → JavaScript → 컨테이너 기반 순차 시도의 다단계 클릭 전략
 
-### 📊 상품 상세 스펙 완전 추출
-- **`.pro-info-boxs` 구조 파싱**: 실제 싸다구몰 상세 스펙 테이블 추출
-- **기본 정보**: 상품명, 가격, 평점, 재구매율, 판매개수
-- **상세 스펙**: 상표, 모델, 전력, 크기, 무게, 원산지 등 모든 제품 사양
-- **추가 정보**: 상품 URL, 고품질 이미지 URL, 배송 정보
+### 📊 상품 상세 스펙 완전 추출 및 DB 저장
+- `.pro-info-boxs` 구조 파싱으로 상표/모델/전력/크기/무게/원산지 등 전체 제품 사양 추출
+- 크롤링 작업 유형(`CrawlJobType`: 자동/수동)과 함께 DB에 저장
 
 ## 🏗️ 프로젝트 구조
 
 ```
-D:\D_AI_projects\KDT_BE12_Final_crowling_test\
+.
 ├── src/main/java/com/kdt/crawler/
 │   ├── SsadaguCrawler.java              # 🎯 메인 자동화 크롤러
 │   ├── PlaywrightInstaller.java         # 🔧 브라우저 설치 도구
-│   ├── model/ProductInfo.java           # 📊 상품 정보 데이터 모델
+│   ├── model/
+│   │   ├── ProductInfo.java             # 📊 상품 정보 데이터 모델
+│   │   ├── UsedKeyword.java             # 🔄 키워드 중복 체크용 모델
+│   │   └── CrawlJobType.java            # 🏷️ 크롤링 작업 유형(자동/수동)
 │   ├── service/
-│   │   ├── NaverShoppingBestService.java  # 🔍 네이버 쇼핑 베스트 크롤링
-│   │   ├── KeywordService.java           # 🔄 키워드 중복 방지 서비스  
-│   │   ├── DatabaseService.java          # 💾 데이터베이스 연동 서비스
-│   │   └── SsadaguCrawlerService.java    # 🛒 싸다구몰 상품 클릭
-│   └── util/FileUtils.java              # 💾 파일 저장 유틸리티
-├── data/                                # 📁 결과 저장 폴더
+│   │   ├── NaverShoppingBestService.java  # 🔍 네이버 쇼핑 베스트 API 연동
+│   │   ├── KeywordService.java           # 🔄 키워드 유효성·중복·연관성 검증
+│   │   ├── DatabaseService.java          # 💾 상품 정보 DB 저장 (Oracle)
+│   │   └── SsadaguCrawlerService.java    # 🛒 싸다구몰 상품 클릭·정보 추출
+│   └── util/
+│       ├── SimilarityService.java       # 🧠 키워드-상품명 유사도 검증
+│       ├── PapagoTranslator.java        # 🌐 네이버 Papago 한/영 번역
+│       ├── LanguageConverter.java       # 🔤 대체 언어 매핑
+│       └── FileUtils.java               # 💾 로그 저장 유틸리티
+├── python_similarity_api/               # 🐍 유사도 계산용 별도 Python 마이크로서비스
+├── database_schema_oracle.sql           # 🗄️ Oracle DB 스키마
+├── data/                                # 📁 로그 저장 폴더
 ├── pom.xml                              # ⚙️ Maven 설정
 ├── run.bat                              # 🚀 Windows 실행 스크립트
-└── README.md                            # 📖 이 가이드
+└── .env.example                         # 🔑 환경변수 템플릿
 ```
 
 ## 🚀 실행 방법
 
 ### 1단계: 환경 설정 (최초 1회만)
 ```bash
-# IntelliJ에서 프로젝트 열기
+cp .env.example .env
+# .env에 DB 접속 정보, PAPAGO_CLIENT_ID/SECRET 등을 채워주세요
 # PlaywrightInstaller.java 실행하여 브라우저 설치
 ```
 
 ### 2단계: 메인 크롤러 실행
 ```bash
-# SsadaguCrawler.java 실행
-# 전체 자동화 프로세스 실행
+# SsadaguCrawler.java 실행 (인자 없으면 AUTOMATIC으로 동작)
 ```
 
 ### 3단계: 결과 확인
-```bash
-# data/ 폴더에서 결과 파일 확인
-```
+- 크롤링된 상품 정보와 키워드는 DB에 저장됩니다
+- 실행 로그는 `data/` 폴더에서 확인 가능합니다
 
 ## 🎯 자동화 프로세스
 
 ```
 🚀 시작
   ▼
-📊 네이버 쇼핑 베스트 크롤링
+📊 1단계: 네이버 쇼핑 베스트 API에서 1~20위 키워드 수집
   ▼
-🔍 1위~20위 인기 키워드 수집
+🔍 2단계: 1위부터 순차 검증 (기본 유효성 → 30일 중복 → 상품 연관성/번역 재시도)
   ▼
-🎯 중복되지 않은 키워드 자동 선택
+✅ 3단계: 검증 통과한 첫 키워드 확정
   ▼
-🛒 싸다구몰 접속 (https://ssadagu.kr)
+🛒 4단계: 싸다구몰에서 해당 키워드로 검색, 실제 상품 클릭
   ▼
-🔍 키워드 검색 실행
+📋 5단계: 상품 상세 정보 추출 및 검증
   ▼
-👆 첫 번째 상품 실제 클릭
-  ▼
-📦 상품 상세 페이지 이동
-  ▼
-📊 완전한 상품 정보 수집
-  ▼
-💾 데이터베이스 자동 저장
+💾 6단계: 키워드·상품 정보를 DB에 저장
   ▼
 🎉 완료!
 ```
 
-## 📊 추출되는 정보
+## ⚠️ 알려진 이슈 / 진행 중인 작업
 
-### 🏷️ 기본 상품 정보
-- **상품명**: 정확한 제품명
-- **현재가격**: 할인된 판매 가격
-- **원래가격**: 정가 (할인 전 가격)
-- **할인율**: 할인 비율
+- **DB 마이그레이션 진행 중**: 최신 커밋에서 `DatabaseService`는 Oracle(`ORACLE_DB_*` 환경변수)로 전환됐지만, `KeywordService`는 아직 기존 MySQL 접속 정보(`DB_*`)를 그대로 사용하고 있어 전체 기능이 하나의 DB로 통일되지 않은 상태입니다. `pom.xml`에도 Oracle JDBC 드라이버 의존성이 아직 추가되지 않았습니다.
+- 이 시점 이후 작업은 팀 프로젝트([Final-7team-BE](https://github.com/ImHongbin35/Final-7team-BE))로 이관되어 Spring Boot + MyBatis 기반으로 포팅되었습니다.
 
-### ⭐ 상품 평가 정보
-- **평점**: 별점 (4/5점 형태)
-- **재구매율**: 고객 재구매 비율 (2% 형태)
-- **판매개수**: 실제 판매된 수량 (0개 형태)
+## 📞 프로젝트 정보
 
-### 🔗 상품 링크 정보
-- **상품 URL**: 실제 상품 상세 페이지 링크
-- **이미지 URL**: 고품질 상품 이미지 링크
-
-### 🏪 판매자 정보
-- **판매자**: 판매업체 정보
-- **배송 정보**: 배송 관련 안내
-
-## 📁 결과 파일
-
-### 저장 위치
-```
-data/
-├── product_키워드_YYYYMMDD_HHMMSS.txt    # 상품 정보 (한글)
-└── crawler_log_YYYYMMDD.txt              # 실행 로그
-```
-
-### 파일 내용 예시
-```
-=== 상품 정보 ===
-검색 키워드: 에어컨
-상품명: Chigo 이동식 에어컨 단일 냉난방 올인원 기계...
-현재가격: 169,323원
-원래가격: 200,000원
-할인율: 15%
-상품설명: 재구매율: 2%, 판매개수: 0개
-판매자: 싸다구몰
-평점: 4/5점
-리뷰수: 0개
-배송정보: 배송 정보 확인 필요
-상품URL: https://ssadagu.kr/shop/view.php?platform=1688&num_iid=936520055845
-이미지URL: https://cbu01.alicdn.com/img/ibank/O1CN018IdPHJ1rZ0Siaf9Z6_!!2216600875644-0-cib.jpg
-수집일시: 2025-08-22 12:20:33
-```
-
-## 🔧 핵심 기술적 특징
-
-### 🎯 완벽한 HTML 구조 매핑
-실제 웹사이트 구조를 정밀 분석하여 100% 정확한 선택자 구현:
-
-**네이버 쇼핑 베스트 키워드 추출:**
-```java
-// 네이버 쇼핑 베스트 페이지 크롤링
-page.navigate("https://snxbest.naver.com/product/best/buy");
-String keyword = extractKeywordByRank(page, rank);
-String rankSelector = "[data-shp-contents-rank=\"" + rank + "\"]";
-```
-
-**싸다구몰 상품 검색 결과:**
-```css
-div.product_item          /* 상품 컨테이너 */
-  └── a[href*='view.php'] /* 실제 상품 링크 (search_view.php 제외) */
-      ├── .product_title  /* 상품명 */
-      ├── .product_price  /* 가격 */
-      ├── .start img      /* 별점 */
-      ├── .product_repurchaseRate /* 재구매율 */
-      └── .product_sales  /* 판매개수 */
-```
-
-**상품 상세 페이지 스펙:**
-```css
-.pro-info-boxs            /* 상품 상세 스펙 컨테이너 */
-  └── .pro-info-item      /* 각 스펙 항목 */
-      ├── .pro-info-title /* 스펙 제목 (상표, 모델 등) */
-      └── .pro-info-info  /* 스펙 내용 */
-```
-
-### 🔄 지능형 상품 링크 검증
-```java
-// 실제 상품 링크만 선별하는 고급 필터링
-"a[href*='view.php']:not([href*='search_view.php'])"  // search_view.php 완전 제외
-"a[href*='view.php'][href*='platform'][href*='num_iid']"  // 실제 상품 파라미터 검증
-```
-
-### 🧠 스마트 키워드 필터링
-```java
-// JavaScript/CSS 함수 패턴 완전 차단
-if (keyword.contains("(") || keyword.contains(")") || 
-    keyword.contains("onCssLoad") || keyword.contains("onClick")) {
-    return false;  // 웹 개발 관련 키워드 제외
-}
-
-// 상품 관련 키워드만 선별적 허용
-String[] productKeywords = {"월병", "에어컨", "휴대폰", "가방", ...};
-```
-
-### 🛡️ 다층 방어 오류 처리
-1. **1차 시도**: Playwright CSS 선택자
-2. **2차 시도**: JavaScript DOM 직접 조작  
-3. **3차 시도**: 컨테이너 기반 백업 검색
-4. **최종 안전망**: 기본 키워드 사용 ("에어컨", "선풍기" 등)
-
-## 🔍 문제 해결 가이드
-
-### ❌ 크롤링 실패 시
-1. **네트워크 연결 확인**
-2. **사이트 접속 확인**: https://ssadagu.kr
-3. **브라우저 재설치**: `PlaywrightInstaller.java` 재실행
-
-### ❌ 네이버 쇼핑 베스트 크롤링 실패 시
-- 네이버 쇼핑 베스트 접속 확인: https://snxbest.naver.com/product/best/buy
-- 페이지 구조 변경 가능성 확인
-
-### ❌ 상품 정보 부족 시
-- 싸다구몰 사이트 구조 변경 가능성
-- 해당 키워드의 상품 부족 가능성
-- 다른 키워드로 재시도 권장
-
-## 🎉 실행 결과 예시
-
-```
-🚀 === 싸다구몰 자동 상품 정보 크롤러 시작 ===
-
-📊 1단계: 네이버 쇼핑 베스트에서 인기 키워드 수집 중...
-📊 네이버 쇼핑 베스트 크롤링 중...
-✅ 1위~20위 순위별 키워드를 수집했습니다!
-
-🎯 2단계: 자동으로 키워드 선택
-=== 발견된 네이버 쇼핑 베스트 키워드 ===
-1. 라부부
-2. 에어컨
-3. 선풍기
-...
-✅ 자동 선택된 키워드: 라부부
-
-🛒 3단계: 싸다구몰에서 '라부부' 상품 정보 수집 중...
-🌐 싸다구몰에 접속 중...
-🎯 검색창 발견: input[name='ss_tx']
-✅ 검색 완료
-🎯 첫 번째 상품을 찾아서 클릭 중...
-📋 선택자 'div.product_item a[href*='view.php']'로 1개 요소 발견
-✅ 첫 번째 상품 발견! 클릭 시도...
-🎉 첫 번째 상품 클릭 성공! 상세 페이지로 이동됨
-📦 상품 상세 페이지에서 정보 추출 중...
-📝 상품명: Chigo 이동식 에어컨...
-💰 가격: 169,323원
-⭐ 평점: 4/5점
-
-💾 5단계: 결과 파일 저장 중...
-✅ 결과 파일이 data/ 폴더에 저장되었습니다.
-
-🎉 === 크롤링 작업이 완료되었습니다! ===
-```
-
-## 🏃‍♂️ 빠른 시작
-
-1. **IntelliJ에서 프로젝트 열기**
-2. **`PlaywrightInstaller.java` 실행** (최초 1회)
-3. **`SsadaguCrawler.java` 실행** (메인 크롤러)
-4. **`data/` 폴더에서 결과 확인**
-
----
-
-## 🔥 주요 개선사항 (v2.0)
-
-### 🎯 네이버 쇼핑 베스트 크롤링 완료
-- **개선**: 실시간 인기 키워드 수집 시스템 구축
-- **장점**: 1위~20위 순위별 키워드를 실시간으로 제공
-- **결과**: 안정적이고 정확한 쇼핑 트렌드 키워드 수집
-
-### 🛒 실제 상품 클릭 성공률 100% 달성  
-- **문제**: `search_view.php` (검색 페이지)를 상품으로 오인하여 클릭
-- **해결**: `platform=` & `num_iid=` 파라미터 검증으로 실제 상품만 클릭
-- **결과**: 항상 실제 상품 상세 페이지로 이동 보장
-
-### 📊 상품 상세 스펙 완전 추출
-- **추가**: `.pro-info-boxs` 구조 파싱으로 모든 제품 사양 추출
-- **내용**: 상표, 모델, 전력, 크기, 무게, 원산지, 배송정보 등
-- **결과**: 단순 기본 정보가 아닌 완전한 제품 카탈로그 수준 정보 제공
-
----
-
-## 🎯 프로젝트 목표 100% 달성
-
-✅ **네이버 쇼핑 베스트 크롤링** - 실시간 키워드 수집  
-✅ **싸다구몰 실제 상품 링크 클릭** - `view.php` 상세 페이지만 타겟팅  
-✅ **완전한 상품 스펙 추출** - 기본정보 + 상세스펙 모두 수집  
-✅ **완전 자동화** - 사용자 개입 없이 전체 프로세스 실행  
-
-> **🚀 이제 프로젝트가 완벽하게 작동합니다!** 
-> 
-> 네이버 쇼핑 베스트 크롤링 → 상품 키워드 추출 → 싸다구몰 검색 → 실제 상품 클릭 → 완전한 정보 수집
-
----
-
-## 📞 개발자 정보
-
-**프로젝트**: KDT_BE12_Final_Crawling_test  
-**Repository**: https://github.com/ImHongbin35/KDT_BE12_Final_Crawling_test  
-**개발 기간**: 2025년 8월  
-**기술 스택**: Java 11, Maven, Playwright, Jsoup
-
-> 💡 **Tip**: 이 프로젝트는 실제 웹사이트 구조를 정밀 분석하여 제작되었습니다. 웹 크롤링 학습에 최적화된 실무 수준의 예제입니다.
+**Repository**: https://github.com/ImHongbin35/KDT_BE12_Final_NaverStore_crawling
+**개발 기간**: 2025년 8월 ~ 9월
+**기술 스택**: Java 11, Maven, Playwright, Jsoup, Jackson, Apache HttpClient, Python(유사도 API)
