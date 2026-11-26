@@ -1,0 +1,5 @@
+flask==2.3.3
+sentence-transformers==2.2.2
+# torch==2.0.1  # torch는 특정 버전을 명시하지 않아 pip가 호환되는 최신 버전을 자동으로 설치하도록 합니다.
+torch
+transformers==4.33.2

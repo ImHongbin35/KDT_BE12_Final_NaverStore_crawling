@@ -4,26 +4,27 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 public class UsedKeyword {
-    private int id;
+    private int keywordId;
     private String keyword;
-    private String usedDate;
+    private String createdAt;
+    private String source;
     
     public UsedKeyword() {
-        this.usedDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        this.createdAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
     
     public UsedKeyword(String keyword) {
         this.keyword = keyword;
-        this.usedDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        this.createdAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
     
     // Getters and Setters
-    public int getId() {
-        return id;
+    public int getKeywordId() {
+        return keywordId;
     }
     
-    public void setId(int id) {
-        this.id = id;
+    public void setKeywordId(int keywordId) {
+        this.keywordId = keywordId;
     }
     
     public String getKeyword() {
@@ -34,20 +35,29 @@ public class UsedKeyword {
         this.keyword = keyword;
     }
     
-    public String getUsedDate() {
-        return usedDate;
+    public String getCreatedAt() {
+        return createdAt;
     }
     
-    public void setUsedDate(String usedDate) {
-        this.usedDate = usedDate;
+    public void setCreatedAt(String createdAt) {
+        this.createdAt = createdAt;
+    }
+    
+    public String getSource() {
+        return source;
+    }
+    
+    public void setSource(String source) {
+        this.source = source;
     }
     
     @Override
     public String toString() {
         return "UsedKeyword{" +
-                "id=" + id +
+                "keywordId=" + keywordId +
                 ", keyword='" + keyword + '\'' +
-                ", usedDate='" + usedDate + '\'' +
+                ", createdAt='" + createdAt + '\'' +
+                ", source='" + source + '\'' +
                 '}';
     }
 }

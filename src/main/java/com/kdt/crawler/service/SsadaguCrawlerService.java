@@ -1,12 +1,19 @@
 package com.kdt.crawler.service;
 
 import com.kdt.crawler.model.ProductInfo;
+import com.kdt.crawler.util.OcrTextFilter;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
@@ -24,6 +31,152 @@ import java.util.List;
 import java.util.ArrayList;
 
 public class SsadaguCrawlerService {
+
+    // Tesseract OCR 인스턴스 (한 번만 초기화)
+    private final Tesseract tesseract;
+    
+    public SsadaguCrawlerService() {
+        // OCR 초기화
+        tesseract = new Tesseract();
+        try {
+            // Tesseract 데이터 경로 설정 (tessdata 폴더가 있는 경로)
+            tesseract.setDatapath("D:/D_AI_projects/Tesseract-OCR/tessdata");
+            // 중국어(간체) + 영어 언어 설정
+            tesseract.setLanguage("chi_sim+eng");
+            System.out.println("✅ OCR 엔진 초기화 완료 (언어: 중국어+영어)");
+        } catch (Exception e) {
+            System.err.println("⚠️ OCR 엔진 초기화 실패: " + e.getMessage());
+            System.err.println("💡 Tesseract가 설치되어 있는지 확인하세요: https://github.com/tesseract-ocr/tesseract");
+        }
+    }
+    
+    /**
+     * 이미지 요소들에서 OCR을 사용하여 텍스트를 추출하는 메서드
+     * 
+     * @param page Playwright 페이지 객체
+     * @return 추출되고 정제된 OCR 텍스트
+     */
+    private String extractOcrTextFromImages(Page page) {
+        System.out.println("🔍 OCR을 사용하여 상품 이미지에서 텍스트 추출 중...");
+        
+        try {
+            // 상품 이미지들을 찾을 선택자들
+            String[] imageSelectors = {
+                ".product_img img",
+                ".product-image img", 
+                ".item-image img",
+                "#main_img",
+                ".big_img img",
+                ".product_view_img img",
+                "img[src*='cbu01.alicdn.com']",
+                "img[src*='img.alicdn.com']",
+                "div.product_item img"
+            };
+            
+            List<String> allOcrTexts = new ArrayList<>();
+            int processedImages = 0;
+            final int MAX_IMAGES_TO_PROCESS = 3; // 처리할 최대 이미지 수 (성능 고려)
+            
+            for (String selector : imageSelectors) {
+                try {
+                    Locator imageElements = page.locator(selector);
+                    int imageCount = imageElements.count();
+                    
+                    if (imageCount > 0) {
+                        System.out.println("📸 선택자 '" + selector + "'로 " + imageCount + "개 이미지 발견");
+                        
+                        // 각 이미지에 대해 OCR 수행 (최대 MAX_IMAGES_TO_PROCESS개까지)
+                        for (int i = 0; i < Math.min(imageCount, MAX_IMAGES_TO_PROCESS - processedImages); i++) {
+                            try {
+                                Locator imageElement = imageElements.nth(i);
+                                
+                                // 이미지 요소의 스크린샷을 byte 배열로 캡처
+                                byte[] imageBytes = imageElement.screenshot();
+                                
+                                // OCR 수행
+                                String ocrText = performOcr(imageBytes);
+                                
+                                if (ocrText != null && !ocrText.trim().isEmpty()) {
+                                    System.out.println("✅ 이미지 " + (i + 1) + " OCR 결과: " + ocrText.length() + "글자 추출");
+                                    allOcrTexts.add(ocrText);
+                                } else {
+                                    System.out.println("⚠️ 이미지 " + (i + 1) + " OCR 결과 없음");
+                                }
+                                
+                                processedImages++;
+                                
+                            } catch (Exception e) {
+                                System.err.println("❌ 이미지 " + (i + 1) + " OCR 실패: " + e.getMessage());
+                            }
+                        }
+                        
+                        // 최대 이미지 수에 도달하면 중단
+                        if (processedImages >= MAX_IMAGES_TO_PROCESS) {
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ 선택자 '" + selector + "' 이미지 처리 실패: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            // 모든 OCR 텍스트를 합치고 정제
+            if (!allOcrTexts.isEmpty()) {
+                String combinedOcrText = String.join("\n", allOcrTexts);
+                String filteredText = OcrTextFilter.filterOcrText(combinedOcrText);
+                
+                System.out.println("📊 " + OcrTextFilter.getFilteringStats(combinedOcrText, filteredText));
+                System.out.println("✅ OCR 텍스트 추출 완료: " + (filteredText.length() > 0 ? "성공" : "필터링 후 텍스트 없음"));
+                
+                return filteredText;
+            } else {
+                System.out.println("⚠️ OCR 가능한 이미지를 찾지 못했습니다.");
+                return "";
+            }
+            
+        } catch (Exception e) {
+            System.err.println("❌ OCR 텍스트 추출 중 전체 오류: " + e.getMessage());
+            e.printStackTrace();
+            return "";
+        }
+    }
+    
+    /**
+     * 바이트 배열 이미지에 대해 OCR을 수행하는 메서드
+     * 
+     * @param imageBytes 이미지 바이트 배열
+     * @return 추출된 텍스트 (실패 시 null)
+     */
+    private String performOcr(byte[] imageBytes) {
+        if (tesseract == null) {
+            return null;
+        }
+        
+        try {
+            // byte 배열을 BufferedImage로 변환
+            BufferedImage bufferedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+            
+            if (bufferedImage == null) {
+                return null;
+            }
+            
+            // OCR 수행
+            String result = tesseract.doOCR(bufferedImage);
+            
+            return result != null ? result.trim() : "";
+            
+        } catch (TesseractException e) {
+            System.err.println("❌ Tesseract OCR 오류: " + e.getMessage());
+            return null;
+        } catch (IOException e) {
+            System.err.println("❌ 이미지 변환 오류: " + e.getMessage());
+            return null;
+        } catch (Exception e) {
+            System.err.println("❌ OCR 수행 중 예상치 못한 오류: " + e.getMessage());
+            return null;
+        }
+    }
 
     private String downloadAndSaveImage(String imageUrl) {
         return downloadAndSaveImage(imageUrl, 0);
@@ -495,6 +648,9 @@ public class SsadaguCrawlerService {
             // 2. 상세 정보를 추출 (기본 상품 정보)
             extractDetailedProductInfo(doc, productInfo);
 
+            // 2-1. 1688 사이트에서 중국어 정보 수집
+            extractChineseInfoFrom1688(page, productInfo);
+
             // 3. 상품 상세 이미지들을 모두 추출
             List<String> productImageUrls = extractProductDetailImages(doc);
 
@@ -528,6 +684,30 @@ public class SsadaguCrawlerService {
                 }
             } else {
                 System.out.println("⚠️ 상품 상세 이미지를 찾을 수 없습니다.");
+            }
+
+            // 4. OCR을 사용하여 상품 이미지에서 텍스트 추출
+            System.out.println("🔍 OCR을 사용하여 상품 이미지에서 마케팅 텍스트 추출 시작...");
+            try {
+                String ocrText = extractOcrTextFromImages(page);
+                
+                if (ocrText != null && !ocrText.trim().isEmpty()) {
+                    productInfo.setOcrText(ocrText);
+                    System.out.println("✅ OCR 텍스트 추출 완료: " + ocrText.length() + "글자");
+                    
+                    // OCR 텍스트를 한 줄로 변환한 미리보기 출력
+                    String previewText = OcrTextFilter.joinToSingleLine(ocrText);
+                    if (previewText.length() > 100) {
+                        previewText = previewText.substring(0, 100) + "...";
+                    }
+                    System.out.println("📝 OCR 텍스트 미리보기: " + previewText);
+                } else {
+                    productInfo.setOcrText("");
+                    System.out.println("⚠️ OCR 텍스트를 추출하지 못했습니다.");
+                }
+            } catch (Exception ocrException) {
+                System.err.println("❌ OCR 처리 중 오류: " + ocrException.getMessage());
+                productInfo.setOcrText(""); // 빈 문자열로 설정
             }
 
         } catch (Exception e) {
@@ -1197,5 +1377,226 @@ public class SsadaguCrawlerService {
         productInfo.setReviewCount("판매 정보 없음");
         productInfo.setImageUrl("이미지 정보 없음");
         productInfo.setDeliveryInfo("배송 정보 확인 필요");
+    }
+
+    /**
+     * 1688 사이트에서 중국어 상품명과 상세 정보를 수집하는 메서드
+     */
+    private void extractChineseInfoFrom1688(Page page, ProductInfo productInfo) {
+        System.out.println("🇨🇳 1688 사이트에서 중국어 정보 수집 시작...");
+        
+        Page chinesePage = null;
+        try {
+            // 1. 1688 링크 찾기
+            String link1688Url = find1688Link(page);
+            if (link1688Url == null) {
+                System.out.println("⚠️ 1688 링크를 찾을 수 없습니다.");
+                return;
+            }
+            
+            System.out.println("🔗 1688 링크 발견: " + link1688Url);
+            
+            // 2. 새 탭에서 1688 페이지 열기
+            chinesePage = page.context().newPage();
+            
+            // User-Agent 설정 (실제 브라우저처럼)
+            chinesePage.setExtraHTTPHeaders(java.util.Map.of(
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ));
+            
+            chinesePage.navigate(link1688Url);
+            chinesePage.waitForLoadState(LoadState.NETWORKIDLE);
+            chinesePage.waitForTimeout(2000);
+            
+            // 마우스 움직임 시뮬레이션 (사람처럼 행동)
+            chinesePage.mouse().move(100, 100);
+            chinesePage.waitForTimeout(1000);
+            
+            System.out.println("✅ 1688 페이지 접속 완료: " + chinesePage.url());
+            
+            // 3. 중국어 상품명 수집
+            String chineseProductName = extractChineseProductName(chinesePage);
+            if (chineseProductName != null && !chineseProductName.isEmpty()) {
+                productInfo.setProductNameCn(chineseProductName);
+                System.out.println("📝 중국어 상품명: " + chineseProductName);
+            }
+            
+            // 4. 중국어 상세 스펙 수집
+            String chineseSpecs = extractChineseSpecs(chinesePage);
+            if (chineseSpecs != null && !chineseSpecs.isEmpty()) {
+                // 기존 description에 추가
+                String existingDesc = productInfo.getDescription();
+                if (existingDesc != null && !existingDesc.isEmpty()) {
+                    productInfo.setDescription(existingDesc + "\n\n=== 1688 중국어 상세 정보 ===\n" + chineseSpecs);
+                } else {
+                    productInfo.setDescription("=== 1688 중국어 상세 정보 ===\n" + chineseSpecs);
+                }
+                System.out.println("📊 중국어 상세 스펙 수집 완료: " + chineseSpecs.split("\n").length + "개 항목");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("❌ 1688 정보 수집 중 오류: " + e.getMessage());
+        } finally {
+            // 5. 중국어 페이지 닫기
+            if (chinesePage != null) {
+                try {
+                    chinesePage.close();
+                    System.out.println("🔄 싸다구몰 페이지로 복귀");
+                } catch (Exception e) {
+                    System.err.println("❌ 1688 페이지 닫기 실패: " + e.getMessage());
+                }
+            }
+        }
+    }
+    
+    /**
+     * 싸다구몰 페이지에서 1688 링크를 찾는 메서드
+     */
+    private String find1688Link(Page page) {
+        try {
+            String htmlContent = page.content();
+            Document doc = Jsoup.parse(htmlContent);
+            
+            // 1688 링크를 찾는 선택자들
+            String[] linkSelectors = {
+                "a[href*='detail.1688.com']",
+                "a[href*='1688.com/offer']",
+                "img[src*='1688link_btn.png']"
+            };
+            
+            for (String selector : linkSelectors) {
+                Elements elements = doc.select(selector);
+                for (Element element : elements) {
+                    String href = null;
+                    
+                    if (element.tagName().equals("a")) {
+                        href = element.attr("href");
+                    } else if (element.tagName().equals("img")) {
+                        // img 태그인 경우 부모의 a 태그 확인
+                        Element parent = element.parent();
+                        if (parent != null && parent.tagName().equals("a")) {
+                            href = parent.attr("href");
+                        }
+                    }
+                    
+                    if (href != null && href.contains("detail.1688.com")) {
+                        return href.startsWith("http") ? href : "https:" + href;
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            System.err.println("❌ 1688 링크 찾기 실패: " + e.getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 1688 페이지에서 중국어 상품명을 추출하는 메서드 (Playwright locator 방식)
+     */
+    private String extractChineseProductName(Page page) {
+        System.out.println("🔍 1688 중국어 상품명 추출 시작...");
+        
+        // 중국어 상품명 선택자들
+        String[] nameSelectors = {
+            "h1[data-spm-anchor-id]",
+            "#productTitle h1",
+            ".title-content h1",
+            "h1"
+        };
+        
+        for (String selector : nameSelectors) {
+            try {
+                System.out.println("📋 선택자 시도: " + selector);
+                Locator titleLocator = page.locator(selector);
+                
+                // 요소가 존재하는지 확인
+                if (titleLocator.count() > 0) {
+                    // 요소가 나타날 때까지 대기 (최대 5초)
+                    titleLocator.first().waitFor(new Locator.WaitForOptions().setTimeout(5000));
+                    
+                    String text = titleLocator.first().textContent();
+                    if (text != null) {
+                        text = text.trim();
+                        if (!text.isEmpty() && text.length() > 3 && text.length() < 300) {
+                            System.out.println("✅ 중국어 상품명 발견: " + selector);
+                            return text;
+                        }
+                    }
+                }
+                
+            } catch (Exception e) {
+                System.err.println("⚠️ 선택자 " + selector + " 실패: " + e.getMessage());
+                continue;
+            }
+        }
+        
+        System.err.println("❌ 중국어 상품명을 찾을 수 없습니다.");
+        return null;
+    }
+    
+    /**
+     * 1688 페이지에서 중국어 상세 스펙을 추출하는 메서드 (Playwright locator 방식)
+     */
+    private String extractChineseSpecs(Page page) {
+        StringBuilder specs = new StringBuilder();
+        System.out.println("🔍 1688 중국어 상세 스펙 추출 시작...");
+        
+        try {
+            // .ant-descriptions 구조에서 스펙 추출
+            Locator antDescriptions = page.locator(".ant-descriptions");
+            
+            if (antDescriptions.count() > 0) {
+                // 요소가 로드될 때까지 대기
+                antDescriptions.first().waitFor(new Locator.WaitForOptions().setTimeout(5000));
+                
+                // 모든 행 찾기
+                Locator rows = antDescriptions.locator("tr.ant-descriptions-row");
+                int rowCount = rows.count();
+                
+                System.out.println("📊 1688 상품 스펙 " + rowCount + "개 행 발견");
+                
+                for (int i = 0; i < rowCount; i++) {
+                    Locator row = rows.nth(i);
+                    
+                    // 라벨들 찾기
+                    Locator labels = row.locator("th.ant-descriptions-item-label span");
+                    Locator contents = row.locator("td.ant-descriptions-item-content .field-value");
+                    
+                    int labelCount = labels.count();
+                    int contentCount = contents.count();
+                    
+                    for (int j = 0; j < Math.min(labelCount, contentCount); j++) {
+                        try {
+                            String label = labels.nth(j).textContent();
+                            String content = contents.nth(j).textContent();
+                            
+                            if (label != null && content != null) {
+                                label = label.trim();
+                                content = content.trim();
+                                
+                                if (!label.isEmpty() && !content.isEmpty() && content.length() < 300) {
+                                    specs.append(label).append(": ").append(content).append("\n");
+                                }
+                            }
+                        } catch (Exception e) {
+                            System.err.println("⚠️ 스펙 항목 " + j + " 추출 실패: " + e.getMessage());
+                            continue;
+                        }
+                    }
+                }
+                
+                System.out.println("✅ 1688 상세 스펙 추출 완료: " + specs.toString().split("\n").length + "개 항목");
+                
+            } else {
+                System.out.println("⚠️ .ant-descriptions 요소를 찾을 수 없습니다.");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("❌ 중국어 상세 스펙 추출 실패: " + e.getMessage());
+        }
+        
+        return specs.toString();
     }
 }

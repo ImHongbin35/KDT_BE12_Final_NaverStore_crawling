@@ -7,6 +7,7 @@ import com.kdt.crawler.service.NaverShoppingBestService;
 import com.kdt.crawler.service.SsadaguCrawlerService;
 import com.kdt.crawler.util.FileUtils;
 import com.microsoft.playwright.*;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -20,7 +21,12 @@ public class SsadaguCrawler {
             BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
                     .setHeadless(false) // 브라우저 화면 보이도록 설정
                     .setSlowMo(2000)    // 액션 간 2초 대기 (안정성 향상)
-                    .setArgs(Collections.singletonList("--lang=ko-KR"));
+                    .setArgs(Arrays.asList(
+                        "--lang=ko-KR",
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-first-run",
+                        "--disable-default-apps"
+                    ));
 
             Browser browser = playwright.chromium().launch(launchOptions);
             
