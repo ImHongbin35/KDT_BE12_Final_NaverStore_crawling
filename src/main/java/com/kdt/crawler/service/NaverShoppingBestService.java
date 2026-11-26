@@ -136,5 +136,46 @@ public class NaverShoppingBestService {
         return keywords;
     }
     
+    /**
+     * 키워드 유효성 검증
+     */
+    private boolean isValidKeyword(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return false;
+        }
+        
+        keyword = keyword.trim();
+        
+        // 길이 체크
+        if (keyword.length() < 2 || keyword.length() > 20) {
+            return false;
+        }
+        
+        // 숫자만 있는 키워드 제외
+        if (keyword.matches("^[0-9]+$")) {
+            return false;
+        }
+        
+        // 특수문자나 HTML 태그 제외
+        if (keyword.contains("<") || keyword.contains(">") || keyword.contains("&") || 
+            keyword.contains("javascript") || keyword.contains("function")) {
+            return false;
+        }
+        
+        // 네비게이션 관련 키워드 제외
+        String[] invalidKeywords = {
+            "더보기", "검색", "베스트", "인기", "순위", "전체", "카테고리", 
+            "필터", "정렬", "페이지", "이동", "클릭", "선택", "버튼",
+            "레이어", "열기", "닫기", "메뉴", "네비게이션"
+        };
+        
+        for (String invalid : invalidKeywords) {
+            if (keyword.toLowerCase().contains(invalid.toLowerCase())) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
     
 }

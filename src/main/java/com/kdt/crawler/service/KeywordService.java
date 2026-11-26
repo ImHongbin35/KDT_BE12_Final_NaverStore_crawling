@@ -27,7 +27,7 @@ public class KeywordService {
     // -----------------------------------------
     
     /**
-     * used_keywords 테이블에 키워드 저장
+     * used_keyword 테이블에 키워드 저장
      */
     public void saveUsedKeyword(String keyword) {
         if (keyword == null || keyword.trim().isEmpty()) {
@@ -40,27 +40,27 @@ public class KeywordService {
     }
     
     /**
-     * UsedKeyword 객체를 used_keywords 테이블에 저장
+     * UsedKeyword 객체를 used_keyword 테이블에 저장
      */
     public void saveUsedKeyword(UsedKeyword usedKeyword) {
-        String sql = "INSERT INTO used_keywords (keyword, used_date) VALUES (?, ?)";
+        String sql = "INSERT INTO used_keyword (keyword, created_at) VALUES (?, ?)";
         
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, usedKeyword.getKeyword());
-            pstmt.setString(2, usedKeyword.getUsedDate());
+            pstmt.setString(2, usedKeyword.getCreatedAt());
             
             int affectedRows = pstmt.executeUpdate();
             
             if (affectedRows > 0) {
-                System.out.println("✅ 키워드 '" + usedKeyword.getKeyword() + "'가 used_keywords 테이블에 저장되었습니다.");
+                System.out.println("✅ 키워드 '" + usedKeyword.getKeyword() + "'가 used_keyword 테이블에 저장되었습니다.");
             } else {
                 System.err.println("❌ 키워드 저장에 실패했습니다: " + usedKeyword.getKeyword());
             }
             
         } catch (SQLException e) {
-            System.err.println("❌ used_keywords 테이블 저장 오류: " + e.getMessage());
+            System.err.println("❌ used_keyword 테이블 저장 오류: " + e.getMessage());
             System.err.println("   키워드: " + usedKeyword.getKeyword());
             e.printStackTrace();
         }
@@ -85,7 +85,7 @@ public class KeywordService {
         // 중복 검사를 시작할 날짜 계산 (오늘로부터 daysAgo일 전)
         LocalDate cutoffDate = LocalDate.now().minusDays(daysAgo);
         
-        String sql = "SELECT COUNT(*) FROM used_keywords WHERE keyword = ? AND used_date >= ?";
+        String sql = "SELECT COUNT(*) FROM used_keyword WHERE keyword = ? AND created_at >= ?";
         
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -368,6 +368,254 @@ public class KeywordService {
         }
         
         System.out.println("❌ 모든 키워드 검증 실패");
+        return false;
+    }
+    
+    /**
+     * 3글자 이상 키워드 검증 (종합 검증: AI 하이브리드 + 모든 길이별 규칙 적용)
+     */
+    private boolean validateLongKeyword(String keyword, String productTitle) {
+        System.out.println("   🔍 3글자 이상 키워드 종합 검증 시작");
+        
+        // 1단계: AI 전체 검증
+        if (SimilarityService.isRelevant(keyword, productTitle)) {
+            System.out.println("   ✅ [1단계] AI 전체 검증 통과");
+            return true;
+        }
+        
+        // 2단계: 부분 문자열 조합 분석
+        if (isRelevantBySubstringAnalysis(keyword, productTitle)) {
+            System.out.println("   ✅ [2단계] 부분 문자열 조합 분석 통과");
+            return true;
+        }
+        
+        // 3단계: 개별 글자 빈도수 검증 (1글자 규칙 적용)
+        System.out.println("   🔍 [3단계] 개별 글자 빈도수 검증 시작");
+        if (validateLongKeywordByCharFrequency(keyword, productTitle)) {
+            System.out.println("   ✅ [3단계] 개별 글자 빈도수 검증 통과");
+            return true;
+        }
+        
+        // 4단계: 연속된 2~4글자 조합 빈도수 검증 (확장된 조합 규칙 적용)
+        System.out.println("   🔍 [4단계] 연속된 2~4글자 조합 빈도수 검증 시작");
+        if (validateLongKeywordByMultiCharFrequency(keyword, productTitle)) {
+            System.out.println("   ✅ [4단계] 연속된 2~4글자 조합 빈도수 검증 통과");
+            return true;
+        }
+        
+        System.out.println("   ❌ 모든 단계 검증 실패");
+        return false;
+    }
+    
+    /**
+     * 3글자 이상 키워드의 개별 글자들의 빈도수 검증 (1글자 규칙 확장 적용)
+     */
+    private boolean validateLongKeywordByCharFrequency(String keyword, String productTitle) {
+        // 상품명을 단어 단위로 분리 (특수문자, 공백 기준)
+        String[] titleWords = productTitle.toLowerCase().split("[^가-힣a-zA-Z0-9]+");
+        
+        int passedCharCount = 0;
+        int totalCharCount = keyword.length();
+        
+        // 각 글자별로 빈도수 검사
+        for (int i = 0; i < keyword.length(); i++) {
+            String singleChar = String.valueOf(keyword.charAt(i));
+            long count = Arrays.stream(titleWords)
+                .filter(word -> word.equals(singleChar.toLowerCase()))
+                .count();
+            
+            System.out.printf("      - 글자 '%s' 포함 횟수: %d회\\n", singleChar, count);
+            
+            if (count >= 2) {
+                passedCharCount++;
+            }
+        }
+        
+        System.out.println("      📊 2회 이상 포함된 글자: " + passedCharCount + "/" + totalCharCount);
+        
+        // 전체 글자 수의 30% 이상이 2회 이상 등장하면 통과
+        double passRate = (double) passedCharCount / totalCharCount;
+        boolean isPassed = passRate >= 0.3;
+        
+        System.out.printf("      📈 통과율: %.1f%% (기준: 30%% 이상) → %s\\n", 
+            passRate * 100, isPassed ? "통과" : "실패");
+        
+        return isPassed;
+    }
+    
+    /**
+     * 3글자 이상 키워드의 연속된 2~4글자 조합들의 빈도수 검증 (확장된 조합 규칙 적용)
+     */
+    private boolean validateLongKeywordByMultiCharFrequency(String keyword, String productTitle) {
+        if (keyword.length() < 2) {
+            return false;
+        }
+        
+        // 상품명을 단어 단위로 분리 (특수문자, 공백 기준)
+        String[] titleWords = productTitle.toLowerCase().split("[^가-힣a-zA-Z0-9]+");
+        
+        int totalPassedCount = 0;
+        int totalCombinationCount = 0;
+        
+        // 2글자부터 4글자까지 또는 키워드 길이까지 (둘 중 작은 값)
+        int maxLength = Math.min(4, keyword.length());
+        
+        for (int length = 2; length <= maxLength; length++) {
+            System.out.printf("      🔍 %d글자 조합 검증 시작\\n", length);
+            
+            int passedCount = 0;
+            int combinationCount = keyword.length() - length + 1;
+            
+            // 해당 길이의 모든 연속 조합 검사
+            for (int i = 0; i <= keyword.length() - length; i++) {
+                String combination = keyword.substring(i, i + length);
+                
+                // 조합의 각 글자가 상품명에 몇 번 등장하는지 체크
+                int charPassedCount = 0;
+                System.out.printf("        - %d글자 조합 '%s': ", length, combination);
+                
+                for (int j = 0; j < combination.length(); j++) {
+                    String singleChar = String.valueOf(combination.charAt(j));
+                    long count = Arrays.stream(titleWords)
+                        .filter(word -> word.equals(singleChar.toLowerCase()))
+                        .count();
+                    
+                    System.out.printf("'%s'(%d회) ", singleChar, count);
+                    
+                    if (count >= 2) {
+                        charPassedCount++;
+                    }
+                }
+                
+                // 조합의 글자 중 30% 이상이 2회 이상 등장하면 이 조합은 통과
+                double charPassRate = (double) charPassedCount / combination.length();
+                if (charPassRate >= 0.3) {
+                    passedCount++;
+                    System.out.println(" → ✅ 조합 통과");
+                } else {
+                    System.out.println(" → ❌ 조합 실패");
+                }
+            }
+            
+            totalPassedCount += passedCount;
+            totalCombinationCount += combinationCount;
+            
+            System.out.printf("      📊 %d글자 조합 통과: %d/%d\\n", length, passedCount, combinationCount);
+        }
+        
+        System.out.printf("      📊 전체 조합 통과: %d/%d\\n", totalPassedCount, totalCombinationCount);
+        
+        // 전체 조합의 35% 이상이 통과하면 성공
+        double totalPassRate = (double) totalPassedCount / totalCombinationCount;
+        boolean isPassed = totalPassRate >= 0.35;
+        
+        System.out.printf("      📈 전체 통과율: %.1f%% (기준: 35%% 이상) → %s\\n", 
+            totalPassRate * 100, isPassed ? "통과" : "실패");
+        
+        return isPassed;
+    }
+    
+    /**
+     * 2글자 키워드 검증
+     */
+    private boolean validateTwoCharKeyword(String keyword, String productTitle) {
+        String char1 = String.valueOf(keyword.charAt(0));
+        String char2 = String.valueOf(keyword.charAt(1));
+        
+        // 상품명을 단어 단위로 분리 (특수문자, 공백 기준)
+        String[] titleWords = productTitle.toLowerCase().split("[^가-힣a-zA-Z0-9]+");
+        
+        int passedCharCount = 0;
+        
+        // 첫 번째 글자 빈도수 검사
+        long count1 = Arrays.stream(titleWords)
+            .filter(word -> word.equals(char1.toLowerCase()))
+            .count();
+        System.out.printf("      - 글자 '%s' 포함 횟수: %d회\n", char1, count1);
+        if (count1 >= 2) {
+            passedCharCount++;
+        }
+        
+        // 두 번째 글자 빈도수 검사
+        long count2 = Arrays.stream(titleWords)
+            .filter(word -> word.equals(char2.toLowerCase()))
+            .count();
+        System.out.printf("      - 글자 '%s' 포함 횟수: %d회\n", char2, count2);
+        if (count2 >= 2) {
+            passedCharCount++;
+        }
+        
+        System.out.println("   📊 2회 이상 포함된 글자 종류 수: " + passedCharCount + "개");
+        return passedCharCount >= 1; // 2회 이상 포함된 글자가 1종류 이상이면 성공
+    }
+    
+    /**
+     * 1글자 키워드 검증
+     */
+    private boolean validateOneCharKeyword(String keyword, String productTitle) {
+        // 상품명을 단어 단위로 분리 (특수문자, 공백 기준)
+        String[] titleWords = productTitle.toLowerCase().split("[^가-힣a-zA-Z0-9]+");
+        
+        // 키워드(한 글자)가 몇 번 나타나는지 카운트
+        long count = Arrays.stream(titleWords)
+            .filter(word -> word.equals(keyword.toLowerCase()))
+            .count();
+        
+        System.out.printf("   📊 단어 '%s' 포함 횟수: %d회\n", keyword, count);
+        return count >= 2; // 2번 이상 나타나면 성공
+    }
+    
+    /**
+     * 부분 문자열 조합 분석 (키워드 분해 후 유사도 검증)
+     */
+    private boolean isRelevantBySubstringAnalysis(String keyword, String productTitle) {
+        System.out.println("🔄 [백업 로직] 부분 문자열 조합 분석 시작...");
+        
+        // 1. 부분 문자열 풀 생성
+        List<String> substrings = new ArrayList<>();
+        for (int i = 0; i < keyword.length(); i++) {
+            for (int j = i + 1; j <= keyword.length(); j++) {
+                substrings.add(keyword.substring(i, j));
+            }
+        }
+        
+        // 2. 최적화: 긴 문자열부터, 2글자 이상만 검사하도록 정렬
+        substrings.sort((s1, s2) -> s2.length() - s1.length());
+        
+        int matchCount = 0;
+        Set<String> matchedSubstrings = new HashSet<>();
+        
+        // 3. 순차적 검증
+        for (String sub : substrings) {
+            // 너무 짧거나, 원래 키워드와 같은 경우는 건너뛰기 (1단계에서 이미 했으므로)
+            if (sub.length() < 2 || sub.equals(keyword)) {
+                continue;
+            }
+            
+            System.out.println("      - 부분 문자열 '" + sub + "' 검증 중...");
+            if (SimilarityService.isRelevant(sub, productTitle)) {
+                // 더 긴 조각이 이미 매칭되었다면, 짧은 조각은 무시 (예: '배드민턴'이 매칭되면 '배드'는 카운트 안함)
+                boolean isRedundant = false;
+                for (String matched : matchedSubstrings) {
+                    if (matched.contains(sub)) {
+                        isRedundant = true;
+                        break;
+                    }
+                }
+                
+                if (!isRedundant) {
+                    System.out.println("   🎯 부분 문자열 매칭: " + sub);
+                    matchCount++;
+                    matchedSubstrings.add(sub);
+                    
+                    // 하나라도 성공하면 즉시 성공 반환
+                    System.out.println("   ✅ 부분 문자열 '" + sub + "'에서 연관성 발견!");
+                    return true;
+                }
+            }
+        }
+        
+        System.out.println("   ❌ 모든 부분 문자열 조합에서 연관성 찾지 못함.");
         return false;
     }
 }

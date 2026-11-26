@@ -120,9 +120,8 @@ public class SsadaguCrawler {
                     return;
                 }
                 
-                // 선택된 키워드를 used_keywords 테이블에 저장
-                System.out.println("\n💾 3단계: 선택된 키워드를 데이터베이스에 저장 중...");
-                keywordService.saveUsedKeyword(selectedKeyword);
+                // 선택된 키워드 확인 (실제 저장은 상품 정보와 함께 6단계에서 수행)
+                System.out.println("\n✅ 3단계: 선택된 키워드 확인 완료: '" + selectedKeyword + "'");
                 
                 // 4단계: 싸다구몰에서 상품 정보 크롤링
                 System.out.println("\n🛒 4단계: 싸다구몰에서 '" + selectedKeyword + "' 상품 정보 수집 중...");
@@ -134,10 +133,14 @@ public class SsadaguCrawler {
                 System.out.println("\n📋 5단계: 수집된 정보 검증 및 출력");
                 validateAndDisplayResults(productInfo);
 
+
+                // txt파일 저장 -> DB 저장 변경
+
                 // 6단계: 데이터베이스에 저장
                 System.out.println("\n💾 6단계: 결과 DB 저장 중...");
                 dbService.saveProductInfo(productInfo); // 상품 정보를 product 테이블에 저장
                 FileUtils.saveLog("크롤링 완료 및 DB 저장 - " + productInfo.getProductName()); // 로그는 그대로 파일에 저장
+                //
                 System.out.println("\n🎉 === 크롤링 작업이 완료되었습니다! ===");
                 System.out.println("💾 키워드 및 상품 정보가 데이터베이스에 저장되었습니다.");
                 System.out.println("🔍 키워드: " + selectedKeyword);
@@ -263,11 +266,11 @@ public class SsadaguCrawler {
             System.out.println("✅ 재구매율: " + description);
         }
         
-        // 판매개수 (리뷰수에서 추출)
-        String reviewCount = productInfo.getReviewCount();
-        if (reviewCount != null && !reviewCount.equals("판매 정보 없음") && !reviewCount.equals("정보 없음")) {
-            System.out.println("✅ 판매개수: " + reviewCount);
-        }
+        // 판매개수 (리뷰수에서 추출) - 새로운 테이블 구조에서 제거됨
+        // String reviewCount = productInfo.getReviewCount();
+        // if (reviewCount != null && !reviewCount.equals("판매 정보 없음") && !reviewCount.equals("정보 없음")) {
+        //     System.out.println("✅ 판매개수: " + reviewCount);
+        // }
         
         // URL
         String url = productInfo.getProductUrl();
@@ -275,11 +278,6 @@ public class SsadaguCrawler {
             System.out.println("✅ 상품 URL: " + url);
         }
         
-        // 이미지 URL
-        String imageUrl = productInfo.getImageUrl();
-        if (imageUrl != null && !imageUrl.equals("이미지 정보 없음") && !imageUrl.equals("정보 없음")) {
-            System.out.println("✅ 이미지 URL: " + imageUrl);
-        }
         
         // 수집 시간
         System.out.println("⏰ 수집 시간: " + productInfo.getCrawledAt());

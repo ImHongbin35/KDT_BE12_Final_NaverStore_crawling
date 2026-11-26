@@ -1,265 +1,22 @@
 package com.kdt.crawler.service;
 
 import com.kdt.crawler.model.ProductInfo;
-import com.kdt.crawler.util.OcrTextFilter;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import net.sourceforge.tess4j.Tesseract;
-import net.sourceforge.tess4j.TesseractException;
-import java.awt.image.BufferedImage;
-import javax.imageio.ImageIO;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
-import java.io.InputStream;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.UUID;
 import java.util.List;
 import java.util.ArrayList;
 
 public class SsadaguCrawlerService {
 
-    // Tesseract OCR 인스턴스 (한 번만 초기화)
-    private final Tesseract tesseract;
-    
     public SsadaguCrawlerService() {
-        // OCR 초기화
-        tesseract = new Tesseract();
-        try {
-            // Tesseract 데이터 경로 설정 (tessdata 폴더가 있는 경로)
-            tesseract.setDatapath("D:/D_AI_projects/Tesseract-OCR/tessdata");
-            // 중국어(간체) + 영어 언어 설정
-            tesseract.setLanguage("chi_sim+eng");
-            System.out.println("✅ OCR 엔진 초기화 완료 (언어: 중국어+영어)");
-        } catch (Exception e) {
-            System.err.println("⚠️ OCR 엔진 초기화 실패: " + e.getMessage());
-            System.err.println("💡 Tesseract가 설치되어 있는지 확인하세요: https://github.com/tesseract-ocr/tesseract");
-        }
-    }
-    
-    /**
-     * 이미지 요소들에서 OCR을 사용하여 텍스트를 추출하는 메서드
-     * 
-     * @param page Playwright 페이지 객체
-     * @return 추출되고 정제된 OCR 텍스트
-     */
-    private String extractOcrTextFromImages(Page page) {
-        System.out.println("🔍 OCR을 사용하여 상품 이미지에서 텍스트 추출 중...");
-        
-        try {
-            // 상품 이미지들을 찾을 선택자들
-            String[] imageSelectors = {
-                ".product_img img",
-                ".product-image img", 
-                ".item-image img",
-                "#main_img",
-                ".big_img img",
-                ".product_view_img img",
-                "img[src*='cbu01.alicdn.com']",
-                "img[src*='img.alicdn.com']",
-                "div.product_item img"
-            };
-            
-            List<String> allOcrTexts = new ArrayList<>();
-            int processedImages = 0;
-            final int MAX_IMAGES_TO_PROCESS = 3; // 처리할 최대 이미지 수 (성능 고려)
-            
-            for (String selector : imageSelectors) {
-                try {
-                    Locator imageElements = page.locator(selector);
-                    int imageCount = imageElements.count();
-                    
-                    if (imageCount > 0) {
-                        System.out.println("📸 선택자 '" + selector + "'로 " + imageCount + "개 이미지 발견");
-                        
-                        // 각 이미지에 대해 OCR 수행 (최대 MAX_IMAGES_TO_PROCESS개까지)
-                        for (int i = 0; i < Math.min(imageCount, MAX_IMAGES_TO_PROCESS - processedImages); i++) {
-                            try {
-                                Locator imageElement = imageElements.nth(i);
-                                
-                                // 이미지 요소의 스크린샷을 byte 배열로 캡처
-                                byte[] imageBytes = imageElement.screenshot();
-                                
-                                // OCR 수행
-                                String ocrText = performOcr(imageBytes);
-                                
-                                if (ocrText != null && !ocrText.trim().isEmpty()) {
-                                    System.out.println("✅ 이미지 " + (i + 1) + " OCR 결과: " + ocrText.length() + "글자 추출");
-                                    allOcrTexts.add(ocrText);
-                                } else {
-                                    System.out.println("⚠️ 이미지 " + (i + 1) + " OCR 결과 없음");
-                                }
-                                
-                                processedImages++;
-                                
-                            } catch (Exception e) {
-                                System.err.println("❌ 이미지 " + (i + 1) + " OCR 실패: " + e.getMessage());
-                            }
-                        }
-                        
-                        // 최대 이미지 수에 도달하면 중단
-                        if (processedImages >= MAX_IMAGES_TO_PROCESS) {
-                            break;
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("❌ 선택자 '" + selector + "' 이미지 처리 실패: " + e.getMessage());
-                    continue;
-                }
-            }
-            
-            // 모든 OCR 텍스트를 합치고 정제
-            if (!allOcrTexts.isEmpty()) {
-                String combinedOcrText = String.join("\n", allOcrTexts);
-                String filteredText = OcrTextFilter.filterOcrText(combinedOcrText);
-                
-                System.out.println("📊 " + OcrTextFilter.getFilteringStats(combinedOcrText, filteredText));
-                System.out.println("✅ OCR 텍스트 추출 완료: " + (filteredText.length() > 0 ? "성공" : "필터링 후 텍스트 없음"));
-                
-                return filteredText;
-            } else {
-                System.out.println("⚠️ OCR 가능한 이미지를 찾지 못했습니다.");
-                return "";
-            }
-            
-        } catch (Exception e) {
-            System.err.println("❌ OCR 텍스트 추출 중 전체 오류: " + e.getMessage());
-            e.printStackTrace();
-            return "";
-        }
-    }
-    
-    /**
-     * 바이트 배열 이미지에 대해 OCR을 수행하는 메서드
-     * 
-     * @param imageBytes 이미지 바이트 배열
-     * @return 추출된 텍스트 (실패 시 null)
-     */
-    private String performOcr(byte[] imageBytes) {
-        if (tesseract == null) {
-            return null;
-        }
-        
-        try {
-            // byte 배열을 BufferedImage로 변환
-            BufferedImage bufferedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
-            
-            if (bufferedImage == null) {
-                return null;
-            }
-            
-            // OCR 수행
-            String result = tesseract.doOCR(bufferedImage);
-            
-            return result != null ? result.trim() : "";
-            
-        } catch (TesseractException e) {
-            System.err.println("❌ Tesseract OCR 오류: " + e.getMessage());
-            return null;
-        } catch (IOException e) {
-            System.err.println("❌ 이미지 변환 오류: " + e.getMessage());
-            return null;
-        } catch (Exception e) {
-            System.err.println("❌ OCR 수행 중 예상치 못한 오류: " + e.getMessage());
-            return null;
-        }
-    }
-
-    private String downloadAndSaveImage(String imageUrl) {
-        return downloadAndSaveImage(imageUrl, 0);
-    }
-    
-    private String downloadAndSaveImage(String imageUrl, int imageIndex) {
-        try {
-            // --- 1. 날짜 기반 폴더 경로 생성 ---
-            LocalDate today = LocalDate.now();
-            String year = today.format(DateTimeFormatter.ofPattern("yyyy"));
-            String month = today.format(DateTimeFormatter.ofPattern("MM"));
-            String day = today.format(DateTimeFormatter.ofPattern("dd"));
-
-            String baseDirectory = "data/product_images/"; // 프로젝트 내부 저장 폴더
-            Path dateBasedDirectory = Paths.get(baseDirectory, year, month, day);
-
-            // 해당 폴더가 존재하지 않으면 생성
-            Files.createDirectories(dateBasedDirectory);
-
-            // --- 2. 고유한 파일명 생성 (UUID + 이미지 순서 + 확장자) ---
-            // URL에서 '?' 뒤의 파라미터를 모두 제거하여 순수한 이미지 주소만 남김
-            String cleanImageUrl = imageUrl;
-            int queryIndex = cleanImageUrl.indexOf("?");
-            if (queryIndex != -1) {
-                cleanImageUrl = cleanImageUrl.substring(0, queryIndex);
-            }
-            
-            String extension = "";
-            int lastIndexOfDot = cleanImageUrl.lastIndexOf(".");
-            if (lastIndexOfDot > 0) {
-                extension = cleanImageUrl.substring(lastIndexOfDot);
-                // 확장자에서 파일명으로 사용할 수 없는 특수문자 제거
-                extension = extension.replaceAll("[^a-zA-Z0-9.]", "");
-            }
-            // 확장자가 비어있으면 기본 확장자 사용
-            if (extension.isEmpty()) {
-                extension = ".jpg";
-            }
-            String uniqueFileName = UUID.randomUUID().toString() + "_img" + imageIndex + extension;
-
-            // --- 3. 최종 저장 경로 및 다운로드 ---
-            Path destinationPath = dateBasedDirectory.resolve(uniqueFileName);
-
-            URL url = new URL(imageUrl);
-            try (InputStream in = url.openStream()) {
-                Files.copy(in, destinationPath, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("✅ 이미지 " + (imageIndex + 1) + " 저장 성공: " + destinationPath);
-
-                // 4. DB에 저장할 상대 경로 반환
-                String relativePath = Paths.get("data/product_images/", year, month, day, uniqueFileName).toString().replace("\\", "/");
-                return relativePath;
-            }
-
-        } catch (Exception e) {
-            System.err.println("❌ 이미지 " + (imageIndex + 1) + " 다운로드 실패: " + e.getMessage());
-            return null;
-        }
-    }
-    
-    private List<String> downloadAndSaveMultipleImages(List<String> imageUrls) {
-        List<String> savedPaths = new ArrayList<>();
-        
-        System.out.println("🖼️ " + imageUrls.size() + "개의 상품 이미지 다운로드 시작...");
-        
-        for (int i = 0; i < imageUrls.size(); i++) {
-            String imageUrl = imageUrls.get(i);
-            String savedPath = downloadAndSaveImage(imageUrl, i);
-            
-            if (savedPath != null) {
-                savedPaths.add(savedPath);
-            }
-            
-            // 다운로드 간격 조정 (서버 부하 방지)
-            try {
-                Thread.sleep(500); // 0.5초 대기
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        
-        System.out.println("✅ " + savedPaths.size() + "개 이미지 저장 완료");
-        return savedPaths;
     }
 
     public ProductInfo crawlProductInfo(Page page, String keyword) {
@@ -616,7 +373,7 @@ public class SsadaguCrawlerService {
                 
                 // 판매개수 추출
                 String salesCount = extractSalesCount(firstProduct);
-                productInfo.setReviewCount(salesCount);
+                // productInfo.setReviewCount(salesCount); // 새로운 테이블 구조에서 제거됨
                 System.out.println("📊 판매개수: " + salesCount);
                 
                 // 설명에 재구매율 정보 포함
@@ -631,14 +388,10 @@ public class SsadaguCrawlerService {
                     productInfo.setProductUrl(page.url());
                 }
                 
-                // 이미지 URL 추출
-                String imageUrl = extractImageUrl(firstProduct);
-                productInfo.setImageUrl(imageUrl);
-                System.out.println("🖼️ 이미지 URL: " + imageUrl);
                 
                 // 기본 정보 설정
-                productInfo.setSeller("싸다구몰");
-                productInfo.setDeliveryInfo("배송 정보 확인 필요");
+                // productInfo.setSeller("싸다구몰"); // 새로운 테이블 구조에서 제거됨
+                // productInfo.setDeliveryInfo("배송 정보 확인 필요"); // 새로운 테이블 구조에서 제거됨
             } else {
                 System.out.println("❌ 검색 결과에서 상품을 찾을 수 없습니다.");
                 setDefaultProductInfo(productInfo, page.url());
@@ -661,64 +414,6 @@ public class SsadaguCrawlerService {
             // 2. 상세 정보를 추출 (기본 상품 정보)
             extractDetailedProductInfo(doc, productInfo);
 
-            // 3. 상품 상세 이미지들을 모두 추출
-            List<String> productImageUrls = extractProductDetailImages(doc);
-
-            if (!productImageUrls.isEmpty()) {
-                // 첫 번째 이미지를 메인 이미지로 설정
-                productInfo.setImageUrl(productImageUrls.get(0));
-                System.out.println("🖼️ 메인 이미지 URL: " + productImageUrls.get(0));
-
-                // 모든 상품 이미지를 다운로드하고 저장
-                List<String> savedImagePaths = downloadAndSaveMultipleImages(productImageUrls);
-
-                if (!savedImagePaths.isEmpty()) {
-                    // 첫 번째 저장된 이미지 경로를 localImagePath에 설정
-                    productInfo.setLocalImagePath(savedImagePaths.get(0));
-                    System.out.println("💾 메인 저장 경로: " + savedImagePaths.get(0));
-                    
-                    // 추가 이미지 경로들을 설명에 포함 (선택사항)
-                    if (savedImagePaths.size() > 1) {
-                        StringBuilder additionalImages = new StringBuilder();
-                        for (int i = 1; i < savedImagePaths.size(); i++) {
-                            additionalImages.append("추가이미지").append(i).append(": ").append(savedImagePaths.get(i)).append("\n");
-                        }
-                        
-                        String existingDesc = productInfo.getDescription();
-                        if (existingDesc != null && !existingDesc.isEmpty()) {
-                            productInfo.setDescription(existingDesc + "\n\n=== 추가 상품 이미지 ===\n" + additionalImages.toString());
-                        } else {
-                            productInfo.setDescription("=== 추가 상품 이미지 ===\n" + additionalImages.toString());
-                        }
-                    }
-                }
-            } else {
-                System.out.println("⚠️ 상품 상세 이미지를 찾을 수 없습니다.");
-            }
-
-            // 4. OCR을 사용하여 상품 이미지에서 텍스트 추출
-            System.out.println("🔍 OCR을 사용하여 상품 이미지에서 마케팅 텍스트 추출 시작...");
-            try {
-                String ocrText = extractOcrTextFromImages(page);
-                
-                if (ocrText != null && !ocrText.trim().isEmpty()) {
-                    productInfo.setOcrText(ocrText);
-                    System.out.println("✅ OCR 텍스트 추출 완료: " + ocrText.length() + "글자");
-                    
-                    // OCR 텍스트를 한 줄로 변환한 미리보기 출력
-                    String previewText = OcrTextFilter.joinToSingleLine(ocrText);
-                    if (previewText.length() > 100) {
-                        previewText = previewText.substring(0, 100) + "...";
-                    }
-                    System.out.println("📝 OCR 텍스트 미리보기: " + previewText);
-                } else {
-                    productInfo.setOcrText("");
-                    System.out.println("⚠️ OCR 텍스트를 추출하지 못했습니다.");
-                }
-            } catch (Exception ocrException) {
-                System.err.println("❌ OCR 처리 중 오류: " + ocrException.getMessage());
-                productInfo.setOcrText(""); // 빈 문자열로 설정
-            }
 
         } catch (Exception e) {
             System.err.println("❌ 상세 페이지 정보 추출 중 오류: " + e.getMessage());
@@ -934,34 +629,6 @@ public class SsadaguCrawlerService {
         return "URL 정보 없음";
     }
     
-    private String extractImageUrl(Element productElement) {
-        try {
-            String[] imageSelectors = {
-                "img[src*='alicdn.com']", ".product_image img", "img[alt]:not([src*='icon'])", 
-                "img[class*='hover']", "img"
-            };
-            
-            for (String selector : imageSelectors) {
-                Element imgElement = productElement.selectFirst(selector);
-                if (imgElement != null) {
-                    String src = imgElement.attr("src");
-                    if (src != null && !src.isEmpty() && !src.contains("icon")) {
-                        if (src.startsWith("http")) {
-                            return src;
-                        } else if (src.startsWith("/")) {
-                            return "https://ssadagu.kr" + src;
-                        } else {
-                            return "https://ssadagu.kr/" + src;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("이미지 URL 추출 오류: " + e.getMessage());
-        }
-        
-        return "이미지 정보 없음";
-    }
     
     private void extractDetailedProductInfo(Document doc, ProductInfo productInfo) {
         System.out.println("📋 상세 페이지에서 정보 추출 중...");
@@ -1014,7 +681,7 @@ public class SsadaguCrawlerService {
         
         String originalPrice = extractPriceBySelectors(doc, originalPriceSelectors);
         if (!originalPrice.equals("정보 없음")) {
-            productInfo.setOriginalPrice(originalPrice);
+            // productInfo.setOriginalPrice(originalPrice); // 새로운 테이블 구조에서 제거됨
             System.out.println("💵 원가: " + originalPrice);
         }
         
@@ -1026,21 +693,21 @@ public class SsadaguCrawlerService {
         
         String discountRate = extractTextBySelectors(doc, discountSelectors);
         if (!discountRate.equals("정보 없음")) {
-            productInfo.setDiscountRate(discountRate);
+            // productInfo.setDiscountRate(discountRate); // 새로운 테이블 구조에서 제거됨
             System.out.println("🏷️ 할인율: " + discountRate);
         }
         
         // 판매자 정보 (스펙에서도 추출)
         String seller = extractSellerFromSpecs(doc);
         if (!seller.equals("정보 없음")) {
-            productInfo.setSeller(seller);
+            // productInfo.setSeller(seller); // 새로운 테이블 구조에서 제거됨
             System.out.println("🏪 판매자: " + seller);
         }
         
         // 배송 정보 (스펙에서도 추출)
         String deliveryInfo = extractDeliveryFromSpecs(doc);
         if (!deliveryInfo.equals("정보 없음")) {
-            productInfo.setDeliveryInfo(deliveryInfo);
+            // productInfo.setDeliveryInfo(deliveryInfo); // 새로운 테이블 구조에서 제거됨
             System.out.println("🚚 배송 정보: " + deliveryInfo);
         }
         
@@ -1064,22 +731,10 @@ public class SsadaguCrawlerService {
         
         String reviewCount = extractTextBySelectors(doc, reviewSelectors);
         if (!reviewCount.equals("정보 없음")) {
-            productInfo.setReviewCount(reviewCount);
+            // productInfo.setReviewCount(reviewCount); // 새로운 테이블 구조에서 제거됨
             System.out.println("💬 리뷰 수: " + reviewCount);
         }
         
-        // 이미지 URL (상세 페이지에서 더 고해상도 이미지)
-        String[] imageSelectors = {
-            ".product-image img", ".main-image img", ".goods-image img", 
-            "img.product", "img[src*='alicdn.com']", ".detail-image img",
-            "img[alt*='상품']", "img[alt*='제품']", "img"
-        };
-        
-        String imageUrl = extractImageUrlBySelectors(doc, imageSelectors);
-        if (!imageUrl.equals("이미지 없음")) {
-            productInfo.setImageUrl(imageUrl);
-            System.out.println("🖼️ 상세 페이지 이미지: " + imageUrl);
-        }
     }
     
     private String extractTextBySelectors(Document doc, String[] selectors) {
@@ -1136,108 +791,9 @@ public class SsadaguCrawlerService {
         return "정보 없음";
     }
     
-    private String extractImageUrlBySelectors(Document doc, String[] selectors) {
-        for (String selector : selectors) {
-            try {
-                Element element = doc.selectFirst(selector);
-                if (element != null) {
-                    String src = element.attr("src");
-                    if (src != null && !src.isEmpty()) {
-                        if (src.startsWith("http")) {
-                            return src;
-                        } else if (src.startsWith("/")) {
-                            return "https://ssadagu.kr" + src;
-                        } else {
-                            return "https://ssadagu.kr/" + src;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                continue;
-            }
-        }
-        return "이미지 없음";
-    }
     
-    private List<String> extractProductDetailImages(Document doc) {
-        List<String> imageUrls = new ArrayList<>();
-        
-        try {
-            // 상품 상세 이미지 선택자들 (우선순위 순)
-            String[] detailImageSelectors = {
-                "img[id^='img_translate_']",  // 주요 패턴: img_translate_0, img_translate_1, ...
-                "img[src*='alicdn.com'][style*='display: block']", // alicdn.com + display:block 스타일
-                "img[src*='alicdn.com'][style*='width: 100%']",     // alicdn.com + width:100% 스타일
-                ".product-detail img[src*='alicdn.com']",          // 상품 상세 영역 내 이미지
-                ".detail-content img[src*='alicdn.com']",          // 상세 내용 영역 내 이미지
-                "img[src*='alicdn.com']"                           // 모든 alicdn.com 이미지
-            };
-            
-            System.out.println("🔍 상품 상세 이미지 추출 시작...");
-            
-            for (String selector : detailImageSelectors) {
-                Elements imageElements = doc.select(selector);
-                
-                if (imageElements.size() > 0) {
-                    System.out.println("📋 선택자 '" + selector + "'로 " + imageElements.size() + "개 이미지 발견");
-                    
-                    for (Element imgElement : imageElements) {
-                        String src = imgElement.attr("src");
-                        if (src != null && !src.isEmpty()) {
-                            // 이미지 URL 정규화
-                            String normalizedUrl = normalizeImageUrl(src);
-                            
-                            // 중복 제거 및 유효성 검사
-                            if (!imageUrls.contains(normalizedUrl) && isValidProductImage(normalizedUrl)) {
-                                imageUrls.add(normalizedUrl);
-                                System.out.println("✅ 이미지 " + imageUrls.size() + ": " + normalizedUrl);
-                            }
-                        }
-                    }
-                    
-                    // 이미지를 찾았으면 다른 선택자는 시도하지 않음
-                    if (imageUrls.size() > 0) {
-                        break;
-                    }
-                }
-            }
-            
-            System.out.println("📊 총 " + imageUrls.size() + "개의 상품 상세 이미지 추출 완료");
-            
-        } catch (Exception e) {
-            System.err.println("❌ 상품 상세 이미지 추출 중 오류: " + e.getMessage());
-        }
-        
-        return imageUrls;
-    }
     
-    private String normalizeImageUrl(String imageUrl) {
-        if (imageUrl.startsWith("http")) {
-            return imageUrl;
-        } else if (imageUrl.startsWith("/")) {
-            return "https://ssadagu.kr" + imageUrl;
-        } else {
-            return "https://ssadagu.kr/" + imageUrl;
-        }
-    }
     
-    private boolean isValidProductImage(String imageUrl) {
-        // 유효하지 않은 이미지 URL 패턴 필터링
-        String[] invalidPatterns = {
-            "icon", "logo", "banner", "advertisement", "ad_", "btn_", "button"
-        };
-        
-        String lowerUrl = imageUrl.toLowerCase();
-        for (String pattern : invalidPatterns) {
-            if (lowerUrl.contains(pattern)) {
-                return false;
-            }
-        }
-        
-        // 상품 이미지로 간주할 수 있는 패턴
-        return lowerUrl.contains("alicdn.com") && 
-               (lowerUrl.contains(".jpg") || lowerUrl.contains(".jpeg") || lowerUrl.contains(".png"));
-    }
     
     private String extractProductSpecs(Document doc) {
         StringBuilder specs = new StringBuilder();
@@ -1382,10 +938,9 @@ public class SsadaguCrawlerService {
         
         productInfo.setProductUrl(currentUrl);
         productInfo.setDescription("검색 결과 페이지에서 추출된 정보");
-        productInfo.setSeller("싸다구몰");
+        // productInfo.setSeller("싸다구몰"); // 새로운 테이블 구조에서 제거됨
         productInfo.setRating("평점 정보 없음");
-        productInfo.setReviewCount("판매 정보 없음");
-        productInfo.setImageUrl("이미지 정보 없음");
-        productInfo.setDeliveryInfo("배송 정보 확인 필요");
+        // productInfo.setReviewCount("판매 정보 없음"); // 새로운 테이블 구조에서 제거됨
+        // productInfo.setDeliveryInfo("배송 정보 확인 필요"); // 새로운 테이블 구조에서 제거됨
     }
 }

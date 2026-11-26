@@ -52,12 +52,6 @@
             <version>8.0.33</version>
         </dependency>
 
-        <!-- Tess4J for OCR functionality -->
-        <dependency>
-            <groupId>net.sourceforge.tess4j</groupId>
-            <artifactId>tess4j</artifactId>
-            <version>5.8.0</version>
-        </dependency>
 
 
         <!-- HTTP Client for Papago API calls -->

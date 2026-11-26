@@ -6,8 +6,8 @@ import java.time.format.DateTimeFormatter;
 public class UsedKeyword {
     private int keywordId;
     private String keyword;
-    private String createdAt;
     private String source;
+    private String createdAt;
     
     public UsedKeyword() {
         this.createdAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
@@ -27,6 +27,14 @@ public class UsedKeyword {
         this.keywordId = keywordId;
     }
     
+    public String getSource() {
+        return source;
+    }
+    
+    public void setSource(String source) {
+        this.source = source;
+    }
+    
     public String getKeyword() {
         return keyword;
     }
@@ -43,12 +51,13 @@ public class UsedKeyword {
         this.createdAt = createdAt;
     }
     
-    public String getSource() {
-        return source;
+    // 기존 네이밍 규칙 호환성을 위한 메서드 (usedDate -> createdAt 매핑)
+    public String getUsedDate() {
+        return createdAt;
     }
     
-    public void setSource(String source) {
-        this.source = source;
+    public void setUsedDate(String usedDate) {
+        this.createdAt = usedDate;
     }
     
     @Override
@@ -56,8 +65,8 @@ public class UsedKeyword {
         return "UsedKeyword{" +
                 "keywordId=" + keywordId +
                 ", keyword='" + keyword + '\'' +
-                ", createdAt='" + createdAt + '\'' +
                 ", source='" + source + '\'' +
+                ", createdAt='" + createdAt + '\'' +
                 '}';
     }
 }
