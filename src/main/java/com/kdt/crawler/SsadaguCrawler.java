@@ -7,7 +7,6 @@ import com.kdt.crawler.service.NaverShoppingBestService;
 import com.kdt.crawler.service.SsadaguCrawlerService;
 import com.kdt.crawler.util.FileUtils;
 import com.microsoft.playwright.*;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -21,12 +20,7 @@ public class SsadaguCrawler {
             BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
                     .setHeadless(false) // 브라우저 화면 보이도록 설정
                     .setSlowMo(2000)    // 액션 간 2초 대기 (안정성 향상)
-                    .setArgs(Arrays.asList(
-                        "--lang=ko-KR",
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-first-run",
-                        "--disable-default-apps"
-                    ));
+                    .setArgs(Collections.singletonList("--lang=ko-KR"));
 
             Browser browser = playwright.chromium().launch(launchOptions);
             
@@ -44,48 +38,106 @@ public class SsadaguCrawler {
             KeywordService keywordService = new KeywordService();
             
             try {
-                // 1단계: 네이버 쇼핑 베스트에서 키워드 가져오기
-                System.out.println("\n📊 1단계: 네이버 쇼핑 베스트에서 인기 키워드 수집 중...");
-                FileUtils.saveLog("네이버 쇼핑 베스트 크롤링 시작");
+                // 1단계: 네이버 쇼핑 베스트에서 20개 키워드 가져오기
+                System.out.println("\n📊 1단계: 네이버 쇼핑 베스트에서 1-20위 키워드 수집 중...");
+                FileUtils.saveLog("네이버 쇼핑 베스트 API 크롤링 시작");
                 
-                String bestKeyword = bestService.getBestKeyword(page, keywordService);
+                java.util.List<String> bestKeywords = bestService.getBestKeywords();
                 
-                if (bestKeyword == null || bestKeyword.isEmpty()) {
+                if (bestKeywords.isEmpty()) {
                     System.out.println("⚠️ 베스트 키워드를 가져오지 못했습니다. 프로그램을 종료합니다.");
                     FileUtils.saveLog("네이버 쇼핑 베스트 키워드 수집 실패 - 프로그램 종료");
                     return;
                 } else {
-                    System.out.println("✅ 베스트 키워드를 수집했습니다: " + bestKeyword);
-                    FileUtils.saveLog("네이버 쇼핑 베스트 키워드 수집 완료: " + bestKeyword);
+                    System.out.println("✅ 베스트 키워드 " + bestKeywords.size() + "개를 수집했습니다");
+                    FileUtils.saveLog("네이버 쇼핑 베스트 키워드 수집 완료: " + bestKeywords.size() + "개");
+                    
+                    // 키워드 목록 출력
+                    System.out.println("\n=== 수집된 네이버 쇼핑 베스트 키워드 ===");
+                    for (int i = 0; i < bestKeywords.size(); i++) {
+                        System.out.println((i + 1) + "위: " + bestKeywords.get(i));
+                    }
                 }
                 
-                // 2단계: 키워드 선택 완료 (중복 검사는 이미 getBestKeyword에서 완료)
-                System.out.println("\n🎯 2단계: 키워드 선택 완료");
-                String selectedKeyword = bestKeyword;
-                FileUtils.saveLog("선택된 키워드: " + selectedKeyword);
+                // 2단계: 키워드들을 순차적으로 검증하여 첫 번째 유효한 키워드 선택
+                System.out.println("\n🔍 2단계: 키워드 순차 검증 시작...");
+                String selectedKeyword = null;
+                
+                for (int i = 0; i < bestKeywords.size(); i++) {
+                    String keyword = bestKeywords.get(i);
+                    int rank = i + 1;
+                    
+                    System.out.println("\n🔍 " + rank + "위 키워드 '" + keyword + "' 검증 시작...");
+                    FileUtils.saveLog("키워드 검증 시작: " + rank + "위 " + keyword);
+                    
+                    try {
+                        // 2-1. 기본 유효성 검증 (간단한 필터링)
+                        if (!isBasicValidKeyword(keyword)) {
+                            System.out.println("❌ " + rank + "위 키워드 '" + keyword + "' 기본 유효성 검증 실패 - 다음 키워드 확인");
+                            continue;
+                        }
+                        
+                        // 2-2. 30일 중복 검사
+                        boolean isUsedRecently = keywordService.isKeywordUsedRecently(keyword);
+                        if (isUsedRecently) {
+                            System.out.println("❌ " + rank + "위 키워드 '" + keyword + "'는 최근 30일 내 사용됨 - 다음 키워드 확인");
+                            continue;
+                        }
+                        System.out.println("✅ " + rank + "위 키워드 '" + keyword + "' - 30일 중복 검사 통과");
+                        
+                        // 2-3. 실제 상품 연관성 검사 (Playwright 사용)
+                        System.out.println("🔍 " + rank + "위 키워드 '" + keyword + "' 실제 상품 연관성 검사 중...");
+                        if (keywordService.validateKeyword(page, keyword)) {
+                            System.out.println("🎉 최종 선택된 키워드: " + keyword + " (순위: " + rank + "위, 모든 검증 통과)");
+                            selectedKeyword = keyword;
+                            FileUtils.saveLog("최종 선택된 키워드: " + rank + "위 " + keyword + " (모든 검증 통과)");
+                            break;
+                        } else {
+                            System.out.println("❌ 키워드 '" + keyword + "' 실제 상품 연관성 검사 실패 - 대체 언어 시도");
+                            
+                            // 2-4. 한/영 변환 시도
+                            String alternativeKeyword = keywordService.validateWithAlternativeLanguage(page, keyword);
+                            if (alternativeKeyword != null) {
+                                System.out.println("🎉 대체 언어 키워드로 최종 선택: " + alternativeKeyword + " (원본: " + keyword + ", 순위: " + rank + "위)");
+                                selectedKeyword = alternativeKeyword;
+                                FileUtils.saveLog("최종 선택된 키워드: " + alternativeKeyword + " (대체언어, 원본: " + keyword + ")");
+                                break;
+                            }
+                            
+                            System.out.println("❌ 키워드 '" + keyword + "' 대체 언어 검증도 실패 - 다음 키워드 확인");
+                        }
+                        
+                    } catch (Exception e) {
+                        System.err.println("❌ " + rank + "위 키워드 '" + keyword + "' 검증 중 오류 발생: " + e.getMessage());
+                        continue;
+                    }
+                }
+                
+                // 모든 키워드 검증 실패한 경우
+                if (selectedKeyword == null) {
+                    System.err.println("❌ 1-20위 키워드 중 모든 검증을 통과한 키워드가 없습니다. 프로그램을 종료합니다.");
+                    FileUtils.saveLog("모든 키워드 검증 실패 - 프로그램 종료");
+                    return;
+                }
                 
                 // 선택된 키워드를 used_keywords 테이블에 저장
-                System.out.println("💾 선택된 키워드를 데이터베이스에 저장 중...");
+                System.out.println("\n💾 3단계: 선택된 키워드를 데이터베이스에 저장 중...");
                 keywordService.saveUsedKeyword(selectedKeyword);
                 
-                // 3단계: 싸다구몰에서 상품 정보 크롤링
-                System.out.println("\n🛒 3단계: 싸다구몰에서 '" + selectedKeyword + "' 상품 정보 수집 중...");
+                // 4단계: 싸다구몰에서 상품 정보 크롤링
+                System.out.println("\n🛒 4단계: 싸다구몰에서 '" + selectedKeyword + "' 상품 정보 수집 중...");
                 FileUtils.saveLog("싸다구몰 크롤링 시작 - 키워드: " + selectedKeyword);
                 
                 ProductInfo productInfo = crawlerService.crawlProductInfo(page, selectedKeyword);
                 
-                // 4단계: 결과 출력 및 검증
-                System.out.println("\n📋 4단계: 수집된 정보 검증 및 출력");
+                // 5단계: 결과 출력 및 검증
+                System.out.println("\n📋 5단계: 수집된 정보 검증 및 출력");
                 validateAndDisplayResults(productInfo);
 
-
-                // txt파일 저장 -> DB 저장 변경
-
-                // 5단계: 데이터베이스에 저장
-                System.out.println("\n💾 5단계: 결과 DB 저장 중...");
+                // 6단계: 데이터베이스에 저장
+                System.out.println("\n💾 6단계: 결과 DB 저장 중...");
                 dbService.saveProductInfo(productInfo); // 상품 정보를 product 테이블에 저장
                 FileUtils.saveLog("크롤링 완료 및 DB 저장 - " + productInfo.getProductName()); // 로그는 그대로 파일에 저장
-                //
                 System.out.println("\n🎉 === 크롤링 작업이 완료되었습니다! ===");
                 System.out.println("💾 키워드 및 상품 정보가 데이터베이스에 저장되었습니다.");
                 System.out.println("🔍 키워드: " + selectedKeyword);
@@ -129,6 +181,48 @@ public class SsadaguCrawler {
             System.err.println("   3. 바이러스 백신 소프트웨어를 일시 중지하세요.");
             e.printStackTrace();
         }
+    }
+    
+    /**
+     * 기본 키워드 유효성 검증 (간단한 필터링)
+     */
+    private static boolean isBasicValidKeyword(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return false;
+        }
+        
+        keyword = keyword.trim();
+        
+        // 길이 체크
+        if (keyword.length() < 2 || keyword.length() > 20) {
+            return false;
+        }
+        
+        // 숫자만 있는 키워드 제외
+        if (keyword.matches("^[0-9]+$")) {
+            return false;
+        }
+        
+        // 특수문자나 HTML 태그 제외
+        if (keyword.contains("<") || keyword.contains(">") || keyword.contains("&") || 
+            keyword.contains("javascript") || keyword.contains("function")) {
+            return false;
+        }
+        
+        // 네비게이션 관련 키워드 제외
+        String[] invalidKeywords = {
+            "더보기", "검색", "베스트", "인기", "순위", "전체", "카테고리", 
+            "필터", "정렬", "페이지", "이동", "클릭", "선택", "버튼",
+            "레이어", "열기", "닫기", "메뉴", "네비게이션"
+        };
+        
+        for (String invalid : invalidKeywords) {
+            if (keyword.toLowerCase().contains(invalid.toLowerCase())) {
+                return false;
+            }
+        }
+        
+        return true;
     }
     
     private static void validateAndDisplayResults(ProductInfo productInfo) {

@@ -287,7 +287,7 @@ public class SimilarityService {
     private static boolean performStructuralDecomposition(String keyword, String productTitle) {
         System.out.println("   🔧 키워드 구조 분해 중: " + keyword + " (" + keyword.length() + "글자)");
         
-        // 키워드 조합 풀 생성 (1글자, 2글자, 3글자... 모든 부분 문자열)
+        // 키워드 조합 풀 생성 (1글자, 2글자, 3글자... 모든 부봄 문자열)
         java.util.Set<String> keywordPool = new java.util.HashSet<>();
         
         for (int length = 1; length <= keyword.length(); length++) {
@@ -354,31 +354,5 @@ public class SimilarityService {
         }
         
         return isSuccess;
-    }
-    
-    /**
-     * API 서버 연결 실패 시 사용하는 백업 로직 (하위 호환성)
-     * 간단한 부분 문자열 매칭 사용
-     * 
-     * @param keyword 키워드
-     * @param productTitle 상품명
-     * @return 연관성 판단 결과
-     */
-    private static boolean useBackupLogic(String keyword, String productTitle) {
-        return useAdvancedBackupLogic(
-            preprocessKeyword(keyword), 
-            preprocessProductTitle(productTitle),
-            keyword, 
-            productTitle
-        );
-    }
-    
-    /**
-     * 유사도 임계값 설정
-     * 
-     * @return 현재 임계값
-     */
-    public static double getSimilarityThreshold() {
-        return SIMILARITY_THRESHOLD;
     }
 }

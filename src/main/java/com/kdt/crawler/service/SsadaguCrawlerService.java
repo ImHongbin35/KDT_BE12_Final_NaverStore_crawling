@@ -197,10 +197,23 @@ public class SsadaguCrawlerService {
             Files.createDirectories(dateBasedDirectory);
 
             // --- 2. 고유한 파일명 생성 (UUID + 이미지 순서 + 확장자) ---
+            // URL에서 '?' 뒤의 파라미터를 모두 제거하여 순수한 이미지 주소만 남김
+            String cleanImageUrl = imageUrl;
+            int queryIndex = cleanImageUrl.indexOf("?");
+            if (queryIndex != -1) {
+                cleanImageUrl = cleanImageUrl.substring(0, queryIndex);
+            }
+            
             String extension = "";
-            int lastIndexOfDot = imageUrl.lastIndexOf(".");
+            int lastIndexOfDot = cleanImageUrl.lastIndexOf(".");
             if (lastIndexOfDot > 0) {
-                extension = imageUrl.substring(lastIndexOfDot);
+                extension = cleanImageUrl.substring(lastIndexOfDot);
+                // 확장자에서 파일명으로 사용할 수 없는 특수문자 제거
+                extension = extension.replaceAll("[^a-zA-Z0-9.]", "");
+            }
+            // 확장자가 비어있으면 기본 확장자 사용
+            if (extension.isEmpty()) {
+                extension = ".jpg";
             }
             String uniqueFileName = UUID.randomUUID().toString() + "_img" + imageIndex + extension;
 
@@ -647,9 +660,6 @@ public class SsadaguCrawlerService {
 
             // 2. 상세 정보를 추출 (기본 상품 정보)
             extractDetailedProductInfo(doc, productInfo);
-
-            // 2-1. 1688 사이트에서 중국어 정보 수집
-            extractChineseInfoFrom1688(page, productInfo);
 
             // 3. 상품 상세 이미지들을 모두 추출
             List<String> productImageUrls = extractProductDetailImages(doc);
@@ -1377,226 +1387,5 @@ public class SsadaguCrawlerService {
         productInfo.setReviewCount("판매 정보 없음");
         productInfo.setImageUrl("이미지 정보 없음");
         productInfo.setDeliveryInfo("배송 정보 확인 필요");
-    }
-
-    /**
-     * 1688 사이트에서 중국어 상품명과 상세 정보를 수집하는 메서드
-     */
-    private void extractChineseInfoFrom1688(Page page, ProductInfo productInfo) {
-        System.out.println("🇨🇳 1688 사이트에서 중국어 정보 수집 시작...");
-        
-        Page chinesePage = null;
-        try {
-            // 1. 1688 링크 찾기
-            String link1688Url = find1688Link(page);
-            if (link1688Url == null) {
-                System.out.println("⚠️ 1688 링크를 찾을 수 없습니다.");
-                return;
-            }
-            
-            System.out.println("🔗 1688 링크 발견: " + link1688Url);
-            
-            // 2. 새 탭에서 1688 페이지 열기
-            chinesePage = page.context().newPage();
-            
-            // User-Agent 설정 (실제 브라우저처럼)
-            chinesePage.setExtraHTTPHeaders(java.util.Map.of(
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ));
-            
-            chinesePage.navigate(link1688Url);
-            chinesePage.waitForLoadState(LoadState.NETWORKIDLE);
-            chinesePage.waitForTimeout(2000);
-            
-            // 마우스 움직임 시뮬레이션 (사람처럼 행동)
-            chinesePage.mouse().move(100, 100);
-            chinesePage.waitForTimeout(1000);
-            
-            System.out.println("✅ 1688 페이지 접속 완료: " + chinesePage.url());
-            
-            // 3. 중국어 상품명 수집
-            String chineseProductName = extractChineseProductName(chinesePage);
-            if (chineseProductName != null && !chineseProductName.isEmpty()) {
-                productInfo.setProductNameCn(chineseProductName);
-                System.out.println("📝 중국어 상품명: " + chineseProductName);
-            }
-            
-            // 4. 중국어 상세 스펙 수집
-            String chineseSpecs = extractChineseSpecs(chinesePage);
-            if (chineseSpecs != null && !chineseSpecs.isEmpty()) {
-                // 기존 description에 추가
-                String existingDesc = productInfo.getDescription();
-                if (existingDesc != null && !existingDesc.isEmpty()) {
-                    productInfo.setDescription(existingDesc + "\n\n=== 1688 중국어 상세 정보 ===\n" + chineseSpecs);
-                } else {
-                    productInfo.setDescription("=== 1688 중국어 상세 정보 ===\n" + chineseSpecs);
-                }
-                System.out.println("📊 중국어 상세 스펙 수집 완료: " + chineseSpecs.split("\n").length + "개 항목");
-            }
-            
-        } catch (Exception e) {
-            System.err.println("❌ 1688 정보 수집 중 오류: " + e.getMessage());
-        } finally {
-            // 5. 중국어 페이지 닫기
-            if (chinesePage != null) {
-                try {
-                    chinesePage.close();
-                    System.out.println("🔄 싸다구몰 페이지로 복귀");
-                } catch (Exception e) {
-                    System.err.println("❌ 1688 페이지 닫기 실패: " + e.getMessage());
-                }
-            }
-        }
-    }
-    
-    /**
-     * 싸다구몰 페이지에서 1688 링크를 찾는 메서드
-     */
-    private String find1688Link(Page page) {
-        try {
-            String htmlContent = page.content();
-            Document doc = Jsoup.parse(htmlContent);
-            
-            // 1688 링크를 찾는 선택자들
-            String[] linkSelectors = {
-                "a[href*='detail.1688.com']",
-                "a[href*='1688.com/offer']",
-                "img[src*='1688link_btn.png']"
-            };
-            
-            for (String selector : linkSelectors) {
-                Elements elements = doc.select(selector);
-                for (Element element : elements) {
-                    String href = null;
-                    
-                    if (element.tagName().equals("a")) {
-                        href = element.attr("href");
-                    } else if (element.tagName().equals("img")) {
-                        // img 태그인 경우 부모의 a 태그 확인
-                        Element parent = element.parent();
-                        if (parent != null && parent.tagName().equals("a")) {
-                            href = parent.attr("href");
-                        }
-                    }
-                    
-                    if (href != null && href.contains("detail.1688.com")) {
-                        return href.startsWith("http") ? href : "https:" + href;
-                    }
-                }
-            }
-            
-        } catch (Exception e) {
-            System.err.println("❌ 1688 링크 찾기 실패: " + e.getMessage());
-        }
-        
-        return null;
-    }
-    
-    /**
-     * 1688 페이지에서 중국어 상품명을 추출하는 메서드 (Playwright locator 방식)
-     */
-    private String extractChineseProductName(Page page) {
-        System.out.println("🔍 1688 중국어 상품명 추출 시작...");
-        
-        // 중국어 상품명 선택자들
-        String[] nameSelectors = {
-            "h1[data-spm-anchor-id]",
-            "#productTitle h1",
-            ".title-content h1",
-            "h1"
-        };
-        
-        for (String selector : nameSelectors) {
-            try {
-                System.out.println("📋 선택자 시도: " + selector);
-                Locator titleLocator = page.locator(selector);
-                
-                // 요소가 존재하는지 확인
-                if (titleLocator.count() > 0) {
-                    // 요소가 나타날 때까지 대기 (최대 5초)
-                    titleLocator.first().waitFor(new Locator.WaitForOptions().setTimeout(5000));
-                    
-                    String text = titleLocator.first().textContent();
-                    if (text != null) {
-                        text = text.trim();
-                        if (!text.isEmpty() && text.length() > 3 && text.length() < 300) {
-                            System.out.println("✅ 중국어 상품명 발견: " + selector);
-                            return text;
-                        }
-                    }
-                }
-                
-            } catch (Exception e) {
-                System.err.println("⚠️ 선택자 " + selector + " 실패: " + e.getMessage());
-                continue;
-            }
-        }
-        
-        System.err.println("❌ 중국어 상품명을 찾을 수 없습니다.");
-        return null;
-    }
-    
-    /**
-     * 1688 페이지에서 중국어 상세 스펙을 추출하는 메서드 (Playwright locator 방식)
-     */
-    private String extractChineseSpecs(Page page) {
-        StringBuilder specs = new StringBuilder();
-        System.out.println("🔍 1688 중국어 상세 스펙 추출 시작...");
-        
-        try {
-            // .ant-descriptions 구조에서 스펙 추출
-            Locator antDescriptions = page.locator(".ant-descriptions");
-            
-            if (antDescriptions.count() > 0) {
-                // 요소가 로드될 때까지 대기
-                antDescriptions.first().waitFor(new Locator.WaitForOptions().setTimeout(5000));
-                
-                // 모든 행 찾기
-                Locator rows = antDescriptions.locator("tr.ant-descriptions-row");
-                int rowCount = rows.count();
-                
-                System.out.println("📊 1688 상품 스펙 " + rowCount + "개 행 발견");
-                
-                for (int i = 0; i < rowCount; i++) {
-                    Locator row = rows.nth(i);
-                    
-                    // 라벨들 찾기
-                    Locator labels = row.locator("th.ant-descriptions-item-label span");
-                    Locator contents = row.locator("td.ant-descriptions-item-content .field-value");
-                    
-                    int labelCount = labels.count();
-                    int contentCount = contents.count();
-                    
-                    for (int j = 0; j < Math.min(labelCount, contentCount); j++) {
-                        try {
-                            String label = labels.nth(j).textContent();
-                            String content = contents.nth(j).textContent();
-                            
-                            if (label != null && content != null) {
-                                label = label.trim();
-                                content = content.trim();
-                                
-                                if (!label.isEmpty() && !content.isEmpty() && content.length() < 300) {
-                                    specs.append(label).append(": ").append(content).append("\n");
-                                }
-                            }
-                        } catch (Exception e) {
-                            System.err.println("⚠️ 스펙 항목 " + j + " 추출 실패: " + e.getMessage());
-                            continue;
-                        }
-                    }
-                }
-                
-                System.out.println("✅ 1688 상세 스펙 추출 완료: " + specs.toString().split("\n").length + "개 항목");
-                
-            } else {
-                System.out.println("⚠️ .ant-descriptions 요소를 찾을 수 없습니다.");
-            }
-            
-        } catch (Exception e) {
-            System.err.println("❌ 중국어 상세 스펙 추출 실패: " + e.getMessage());
-        }
-        
-        return specs.toString();
     }
 }

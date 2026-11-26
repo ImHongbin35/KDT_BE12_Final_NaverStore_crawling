@@ -23,13 +23,12 @@ public class DatabaseService {
         System.out.println("🔍 ProductInfo 저장 시도:");
         System.out.println("   키워드: " + productInfo.getKeyword());
         System.out.println("   상품명: " + productInfo.getProductName());
-        System.out.println("   중국어 상품명: " + productInfo.getProductNameCn());
         System.out.println("   가격: " + productInfo.getPrice());
         System.out.println("   수집시간: " + productInfo.getCrawledAt());
         
-        String sql = "INSERT INTO product (keyword, product_name, product_name_cn, price, original_price, discount_rate, " +
+        String sql = "INSERT INTO product (keyword, product_name, price, original_price, discount_rate, " +
                 "description, seller, rating, review_count, delivery_info, product_url, image_url, local_image_path, ocr_text, crawled_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -38,20 +37,19 @@ public class DatabaseService {
 
             pstmt.setString(1, productInfo.getKeyword());
             pstmt.setString(2, productInfo.getProductName());
-            pstmt.setString(3, productInfo.getProductNameCn());
-            pstmt.setString(4, productInfo.getPrice());
-            pstmt.setString(5, productInfo.getOriginalPrice());
-            pstmt.setString(6, productInfo.getDiscountRate());
-            pstmt.setString(7, productInfo.getDescription());
-            pstmt.setString(8, productInfo.getSeller());
-            pstmt.setString(9, productInfo.getRating());
-            pstmt.setString(10, productInfo.getReviewCount());
-            pstmt.setString(11, productInfo.getDeliveryInfo());
-            pstmt.setString(12, productInfo.getProductUrl());
-            pstmt.setString(13, productInfo.getImageUrl());
-            pstmt.setString(14, productInfo.getLocalImagePath());
-            pstmt.setString(15, productInfo.getOcrText());
-            pstmt.setString(16, productInfo.getCrawledAt());
+            pstmt.setString(3, productInfo.getPrice());
+            pstmt.setString(4, productInfo.getOriginalPrice());
+            pstmt.setString(5, productInfo.getDiscountRate());
+            pstmt.setString(6, productInfo.getDescription());
+            pstmt.setString(7, productInfo.getSeller());
+            pstmt.setString(8, productInfo.getRating());
+            pstmt.setString(9, productInfo.getReviewCount());
+            pstmt.setString(10, productInfo.getDeliveryInfo());
+            pstmt.setString(11, productInfo.getProductUrl());
+            pstmt.setString(12, productInfo.getImageUrl());
+            pstmt.setString(13, productInfo.getLocalImagePath());
+            pstmt.setString(14, productInfo.getOcrText());
+            pstmt.setString(15, productInfo.getCrawledAt());
 
             System.out.println("📝 SQL 실행 중...");
             int affectedRows = pstmt.executeUpdate();
