@@ -49,13 +49,13 @@ public class FileUtils {
         json.append("  \"keyword\": \"").append(escapeJson(productInfo.getKeyword())).append("\",\n");
         json.append("  \"productName\": \"").append(escapeJson(productInfo.getProductName())).append("\",\n");
         json.append("  \"price\": \"").append(escapeJson(productInfo.getPrice())).append("\",\n");
-        // json.append("  \"originalPrice\": \"").append(escapeJson(productInfo.getOriginalPrice())).append("\",\n"); // 새로운 테이블 구조에서 제거됨
-        // json.append("  \"discountRate\": \"").append(escapeJson(productInfo.getDiscountRate())).append("\",\n"); // 새로운 테이블 구조에서 제거됨
+        json.append("  \"originalPrice\": \"").append(escapeJson(productInfo.getOriginalPrice())).append("\",\n");
+        json.append("  \"discountRate\": \"").append(escapeJson(productInfo.getDiscountRate())).append("\",\n");
         json.append("  \"description\": \"").append(escapeJson(productInfo.getDescription())).append("\",\n");
-        // json.append("  \"seller\": \"").append(escapeJson(productInfo.getSeller())).append("\",\n"); // 새로운 테이블 구조에서 제거됨
+        json.append("  \"seller\": \"").append(escapeJson(productInfo.getSeller())).append("\",\n");
         json.append("  \"rating\": \"").append(escapeJson(productInfo.getRating())).append("\",\n");
-        // json.append("  \"reviewCount\": \"").append(escapeJson(productInfo.getReviewCount())).append("\",\n"); // 새로운 테이블 구조에서 제거됨
-        // json.append("  \"deliveryInfo\": \"").append(escapeJson(productInfo.getDeliveryInfo())).append("\",\n"); // 새로운 테이블 구조에서 제거됨
+        json.append("  \"reviewCount\": \"").append(escapeJson(productInfo.getReviewCount())).append("\",\n");
+        json.append("  \"deliveryInfo\": \"").append(escapeJson(productInfo.getDeliveryInfo())).append("\",\n");
         json.append("  \"productUrl\": \"").append(escapeJson(productInfo.getProductUrl())).append("\",\n");
         json.append("  \"crawledAt\": \"").append(escapeJson(productInfo.getCrawledAt())).append("\"\n");
         json.append("}");

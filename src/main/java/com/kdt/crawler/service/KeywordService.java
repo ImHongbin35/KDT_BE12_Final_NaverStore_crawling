@@ -20,7 +20,7 @@ import java.util.LinkedHashSet;
 
 public class KeywordService {
     
-    // --- DB 접속 정보 (환경변수에서 로드, DatabaseService와 동일한 설정) ---
+    // --- DB 접속 정보 (환경변수에서 로드; 이 폴더는 DatabaseService가 Oracle을 쓰도록 바뀌어 더 이상 동일하지 않음) ---
     private static final String DB_URL = System.getenv("DB_URL");
     private static final String DB_USER = System.getenv("DB_USER");
     private static final String DB_PASSWORD = System.getenv("DB_PASSWORD");

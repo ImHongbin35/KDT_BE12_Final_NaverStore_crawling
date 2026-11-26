@@ -5,10 +5,10 @@ import java.sql.*;
 
 public class DatabaseService {
 
-    // --- DB 접속 정보 (환경변수에서 로드) ---
-    private static final String DB_URL = System.getenv("DB_URL");
-    private static final String DB_USER = System.getenv("DB_USER");
-    private static final String DB_PASSWORD = System.getenv("DB_PASSWORD");
+    // --- Oracle DB 접속 정보 (환경변수에서 로드) ---
+    private static final String DB_URL = System.getenv("ORACLE_DB_URL");
+    private static final String DB_USER = System.getenv("ORACLE_DB_USER");
+    private static final String DB_PASSWORD = System.getenv("ORACLE_DB_PASSWORD");
     // -----------------------------------------
 
     /**
@@ -31,7 +31,7 @@ public class DatabaseService {
             conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
             conn.setAutoCommit(false); // 트랜잭션 시작
             
-            System.out.println("🔗 MySQL 데이터베이스 연결 성공");
+            System.out.println("🔗 Oracle 데이터베이스 연결 성공");
             
             // 1단계: product 테이블에 상품 정보 저장
             int productId = saveProduct(conn, productInfo);
@@ -106,7 +106,6 @@ public class DatabaseService {
     
     /**
      * used_keyword 테이블에 키워드 정보를 저장하고 생성된 keyword_id를 반환합니다.
-     * MySQL 스키마에서 FK 컬럼명이 product_id입니다.
      */
     private int saveUsedKeyword(Connection conn, int productId, String keyword) throws SQLException {
         String sql = "INSERT INTO used_keyword (product_id, keyword, source) VALUES (?, ?, ?)";

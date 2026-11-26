@@ -18,8 +18,6 @@ public class SsadaguCrawlerService {
 
     public SsadaguCrawlerService() {
     }
-    
-
 
     public ProductInfo crawlProductInfo(Page page, String keyword) {
         ProductInfo productInfo = new ProductInfo();
@@ -736,6 +734,7 @@ public class SsadaguCrawlerService {
             // productInfo.setReviewCount(reviewCount); // 새로운 테이블 구조에서 제거됨
             System.out.println("💬 리뷰 수: " + reviewCount);
         }
+        
         
     }
     

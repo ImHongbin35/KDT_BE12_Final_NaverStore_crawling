@@ -16,7 +16,7 @@ public class SsadaguCrawler {
     public static void main(String[] args) {
         // 크롤링 타입 설정 (실행 인자 방식)
         CrawlJobType crawlType = CrawlJobType.AUTOMATIC; // 기본값
-        
+
         if (args.length > 0) {
             try {
                 crawlType = CrawlJobType.valueOf(args[0].toUpperCase());
@@ -28,7 +28,7 @@ public class SsadaguCrawler {
         } else {
             System.out.println("ℹ️ 실행 인자 없음. 기본값 AUTOMATIC으로 실행합니다.");
         }
-        
+
         System.out.println("🚀 === 싸다구몰 상품 정보 크롤러 시작 (" + crawlType.name() + ") ===");
         
         try (Playwright playwright = Playwright.create()) {
@@ -145,15 +145,15 @@ public class SsadaguCrawler {
                 
                 ProductInfo productInfo = crawlerService.crawlProductInfo(page, selectedKeyword);
                 
-                // crawl_type 설정 (실행 인자로 받은 타입 사용)
-                productInfo.setCrawlType(crawlType.name());
-                
                 // 5단계: 결과 출력 및 검증
                 System.out.println("\n📋 5단계: 수집된 정보 검증 및 출력");
                 validateAndDisplayResults(productInfo);
 
 
                 // txt파일 저장 -> DB 저장 변경
+
+                // crawl_type 설정 (실행 인자로 받은 타입 사용)
+                productInfo.setCrawlType(crawlType.name());
 
                 // 6단계: 데이터베이스에 저장
                 System.out.println("\n💾 6단계: 결과 DB 저장 중...");
